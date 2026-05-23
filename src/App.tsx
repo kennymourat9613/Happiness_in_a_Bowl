@@ -1455,12 +1455,9 @@ export default function App() {
           <div className="bg-white rounded-3xl max-w-4xl w-full max-h-[85vh] overflow-y-auto shadow-2xl flex flex-col">
             {/* Modal Header */}
             <div className="flex items-center justify-between p-6 border-b border-slate-100">
-              <div className="flex items-center gap-2">
-                <span className="text-2xl">📖</span>
-                <div>
-                  <h3 className="text-xl font-bold text-slate-900">User Setup & Help Guide</h3>
-                  <p className="text-xs text-slate-500">Learn how to setup and run locally, format your CSV, and use the dashboard</p>
-                </div>
+              <div>
+                <h3 className="text-xl font-bold text-slate-900">User Guide</h3>
+                <p className="text-xs text-slate-500">Signing in, preparing your file, and using the dashboard</p>
               </div>
               <button
                 onClick={() => setShowGuide(false)}
@@ -1474,67 +1471,79 @@ export default function App() {
             <div className="p-6 md:p-8 space-y-8 overflow-y-auto text-slate-700 leading-relaxed">
               {/* Section 1 */}
               <div>
-                <h4 className="text-md font-bold text-slate-900 border-l-4 border-indigo-500 pl-3 mb-3">💻 1. Local PC Setup Guide</h4>
-                <p className="text-sm mb-4">To run this catering order manager on any local PC, follow these simple steps:</p>
+                <h4 className="text-md font-bold text-slate-900 border-l-4 border-indigo-500 pl-3 mb-3">1. Getting Started</h4>
+                <p className="text-sm mb-4">This is a web application; nothing needs to be installed. Open it in any modern browser on any device.</p>
                 <ol className="list-decimal list-inside space-y-2.5 text-sm pl-2">
-                  <li>
-                    <strong>Install Node.js:</strong> Go to <a href="https://nodejs.org/" target="_blank" rel="noopener noreferrer" className="text-indigo-600 underline">nodejs.org</a>, download, and install the LTS version.
-                  </li>
-                  <li>
-                    <strong>Open Terminal / Command Prompt:</strong> Navigate to the folder containing your project files:
-                    <pre className="mt-1.5 bg-slate-50 p-2 rounded-lg font-mono text-xs text-slate-600">cd path/to/your/catering-manager</pre>
-                  </li>
-                  <li>
-                    <strong>Install Dependencies:</strong> Run the following command:
-                    <pre className="mt-1.5 bg-slate-50 p-2 rounded-lg font-mono text-xs text-slate-600">npm install</pre>
-                  </li>
-                  <li>
-                    <strong>Start Local Server:</strong> Run:
-                    <pre className="mt-1.5 bg-slate-50 p-2 rounded-lg font-mono text-xs text-slate-600">npm run dev</pre>
-                  </li>
-                  <li>
-                    <strong>Open in Browser:</strong> Copy and open the displayed URL (usually <code className="bg-slate-50 text-indigo-600 px-1 py-0.5 rounded font-mono text-xs">http://localhost:5173</code>) in any modern browser.
-                  </li>
+                  <li><strong>Sign in</strong> with the email and password for your account. Accounts are created by an administrator; request access if you do not have one.</li>
+                  <li><strong>Work from any device.</strong> Orders, menu prices, and saved totals are stored in a shared database and stay in sync across all signed-in devices.</li>
+                  <li><strong>Sign out</strong> using the button at the top right when working on a shared or public device.</li>
                 </ol>
               </div>
 
               {/* Section 2 */}
               <div>
-                <h4 className="text-md font-bold text-slate-900 border-l-4 border-indigo-500 pl-3 mb-3">📊 2. Preparing your CSV File</h4>
-                <p className="text-sm mb-3">Your spreadsheet must save as a <strong>.csv</strong> file with these headers:</p>
+                <h4 className="text-md font-bold text-slate-900 border-l-4 border-indigo-500 pl-3 mb-3">2. Preparing Your File</h4>
+                <p className="text-sm mb-3">Upload a <strong>.csv</strong> or <strong>.xlsx</strong> file with the following column headers:</p>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs font-semibold mb-4">
-                  <span className="bg-slate-100 p-2 rounded text-center text-slate-700">"First Name"</span>
-                  <span className="bg-slate-100 p-2 rounded text-center text-slate-700">"Last Name"</span>
-                  <span className="bg-slate-100 p-2 rounded text-center text-slate-700">"Order Date"</span>
-                  <span className="bg-slate-100 p-2 rounded text-center text-slate-700">"Menu Item"</span>
-                  <span className="bg-slate-100 p-2 rounded text-center text-slate-700">"Quantity"</span>
-                  <span className="bg-slate-100 p-2 rounded text-center text-slate-700">"Product Vendor"</span>
-                  <span className="bg-slate-100 p-2 rounded text-center text-slate-700">"Order Note"</span>
+                  <span className="bg-slate-100 p-2 rounded text-center text-slate-700">First Name</span>
+                  <span className="bg-slate-100 p-2 rounded text-center text-slate-700">Last Name</span>
+                  <span className="bg-slate-100 p-2 rounded text-center text-slate-700">Order Date</span>
+                  <span className="bg-slate-100 p-2 rounded text-center text-slate-700">Menu Item</span>
+                  <span className="bg-slate-100 p-2 rounded text-center text-slate-700">Quantity</span>
+                  <span className="bg-slate-100 p-2 rounded text-center text-slate-700">Product Vendor</span>
+                  <span className="bg-slate-100 p-2 rounded text-center text-slate-700">Order Note</span>
                 </div>
                 <p className="text-xs text-slate-500">
-                  💡 <em>Note: If you are using Excel or Google Sheets, just name your columns exactly like the list above and save/download as "CSV (comma-delimited)".</em>
+                  In Excel or Google Sheets, name the columns exactly as listed above. Upload the file directly as <strong>.xlsx</strong>, or save it as CSV (comma-delimited).
                 </p>
               </div>
 
               {/* Section 3 */}
               <div>
-                <h4 className="text-md font-bold text-slate-900 border-l-4 border-indigo-500 pl-3 mb-3">🚀 3. Application Features</h4>
+                <h4 className="text-md font-bold text-slate-900 border-l-4 border-indigo-500 pl-3 mb-3">3. The Three Tabs</h4>
+                <div className="space-y-3 text-sm">
+                  <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                    <p className="font-bold text-slate-900 mb-1">Active Batch Processor</p>
+                    <p className="text-xs text-slate-500">Upload the current orders to view them grouped by menu item with totals, vendors, and notes. Upload a Menu Prices file to enable subtotals and the batch total cost. Print a kitchen report, export a daily summary, or save the day's total to the shared database.</p>
+                  </div>
+                  <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                    <p className="font-bold text-slate-900 mb-1">Total Cost Calculator</p>
+                    <p className="text-xs text-slate-500">Upload past daily-summary or vendor-order files to calculate combined cost across days. The breakdown table shows total quantity, unit price, and subtotal per menu item; select any row to view the dates and sources behind it.</p>
+                  </div>
+                  <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                    <p className="font-bold text-slate-900 mb-1">Order Checker</p>
+                    <p className="text-xs text-slate-500">Cross-check and verify orders to identify discrepancies before fulfilment.</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Section 4 */}
+              <div>
+                <h4 className="text-md font-bold text-slate-900 border-l-4 border-indigo-500 pl-3 mb-3">4. Key Features</h4>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                   <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                    <p className="font-bold text-slate-900 mb-1">🍽️ Automatic Grouping</p>
-                    <p className="text-xs text-slate-500">Orders are instantly combined by menu items with a bold summary of total quantities to prepare.</p>
+                    <p className="font-bold text-slate-900 mb-1">Cloud Sync</p>
+                    <p className="text-xs text-slate-500">Data is stored in a shared, secure database and stays in sync across every signed-in device.</p>
                   </div>
                   <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                    <p className="font-bold text-slate-900 mb-1">⚠️ Special Notes Alert</p>
-                    <p className="text-xs text-slate-500">Specific order notes (e.g. allergies or custom toppings) are highlighted in bright orange with warning icons so they aren't missed.</p>
+                    <p className="font-bold text-slate-900 mb-1">Automatic Grouping</p>
+                    <p className="text-xs text-slate-500">Orders are combined by menu item with a summary of total quantities to prepare.</p>
                   </div>
                   <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                    <p className="font-bold text-slate-900 mb-1">🔍 Real-time Search</p>
-                    <p className="text-xs text-slate-500">Instantly search for items, specific customers, vendors, or keywords in custom notes as you type.</p>
+                    <p className="font-bold text-slate-900 mb-1">Special Notes Alert</p>
+                    <p className="text-xs text-slate-500">Order notes such as allergies or custom requests are highlighted so they are not missed.</p>
                   </div>
                   <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                    <p className="font-bold text-slate-900 mb-1">🖨️ Print Optimization</p>
-                    <p className="text-xs text-slate-500">Click print to produce beautifully formatted, clean physical paper kitchen copies or save as PDF.</p>
+                    <p className="font-bold text-slate-900 mb-1">Real-time Search</p>
+                    <p className="text-xs text-slate-500">Search items, customers, vendors, or note keywords as you type.</p>
+                  </div>
+                  <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                    <p className="font-bold text-slate-900 mb-1">Print Optimization</p>
+                    <p className="text-xs text-slate-500">Produce clean, formatted kitchen copies for print or save them as PDF.</p>
+                  </div>
+                  <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                    <p className="font-bold text-slate-900 mb-1">Export &amp; Save</p>
+                    <p className="text-xs text-slate-500">Export a daily CSV summary or save the day's total to the shared database for later analysis.</p>
                   </div>
                 </div>
               </div>
@@ -1546,7 +1555,7 @@ export default function App() {
                 onClick={() => setShowGuide(false)}
                 className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-semibold transition-colors"
               >
-                Got it, let's start!
+                Close
               </button>
             </div>
           </div>
