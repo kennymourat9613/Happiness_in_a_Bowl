@@ -1,0 +1,96 @@
+========================================================================
+           CATERING ORDER MANAGER - LOCAL SETUP & USER GUIDE
+========================================================================
+
+Welcome to the Catering Order Manager. This guide contains complete 
+step-by-step instructions to set up the application on any local PC,
+prepare your CSV files, and utilize the features of the system.
+
+------------------------------------------------------------------------
+1. LOCAL PC SETUP INSTRUCTIONS
+------------------------------------------------------------------------
+
+To run this application locally, you will need to have Node.js installed on 
+your computer. Follow these steps:
+
+STEP 1: INSTALL NODE.JS
+- Open your web browser and go to: https://nodejs.org/
+- Download and install the LTS (Long Term Support) version recommended for most users.
+- To verify the installation, open your Command Prompt (Windows) or 
+  Terminal (macOS/Linux) and run:
+    node -v
+    npm -v
+  Both commands should return version numbers.
+
+STEP 2: EXTRACT PROJECT FILES
+- Place the project files (this folder containing package.json, src/, index.html, etc.) 
+  in a dedicated directory on your local PC (e.g., C:\catering-manager).
+
+STEP 3: INSTALL DEPENDENCIES
+- Open Command Prompt or Terminal.
+- Navigate to your project directory:
+    cd path/to/your/catering-manager
+- Run the following command to download and install the required packages:
+    npm install
+
+STEP 4: START THE LOCAL SERVER
+- Once installation completes, run:
+    npm run dev
+- The server will start and output a local URL (usually http://localhost:5173).
+- Copy and paste this URL into your browser to access the app!
+
+STEP 5: BUILD A STANDALONE OFFLINE PAGE (OPTIONAL)
+- If you prefer to generate a single offline HTML file that works on any PC 
+  without running a local server:
+    npm run build
+- Open the newly created "dist" folder. Double-click the "index.html" file.
+- You can now use the app anywhere, even without internet or servers!
+
+------------------------------------------------------------------------
+2. PREPARING YOUR CSV FILE
+------------------------------------------------------------------------
+
+The application parses standard .csv files with specific column names. 
+Create your spreadsheet in Microsoft Excel or Google Sheets, label the 
+columns exactly as below, and save/download as "CSV (comma-delimited)".
+
+EXPECTED HEADERS (CASE-INSENSITIVE):
+- First Name
+- Last Name
+- Order Date
+- Menu Item
+- Quantity
+- Product Vendor
+- Order Note
+
+EXAMPLE CSV DATA:
+"First Name","Last Name","Order Date","Menu Item",Quantity,"Product Vendor","Order Note"
+"John","Smith","2024-03-15","Chicken Biryani",2,"Tasty Foods","Extra spicy"
+"Jane","Doe","2024-03-15","Veggie Wrap",1,"Green Kitchen","No onions, please"
+"Alice","Johnson","2024-03-15","Chicken Biryani",1,"Tasty Foods",""
+"Bob","Brown","2024-03-16","Chocolate Muffin",4,"Sweet Delights","Deliver by 9 AM"
+
+*Tip: Standard commas inside quotes (e.g. "No onions, please") are fully 
+supported and won't break the layout!*
+
+------------------------------------------------------------------------
+3. APP FEATURES & HOW TO USE
+------------------------------------------------------------------------
+
+- UPLOAD: Drag & drop your CSV file directly into the dotted upload area 
+  or click to select your file.
+- STATS DASHBOARD: Instantly view total orders, unique menu items, total quantities,
+  and vendor counts.
+- MENU ITEM GROUPING: Orders automatically combine by Menu Item names. Each item
+  shows total quantities and order counts. Click any header to collapse or expand.
+- DELIVERY & NOTES: Expand any menu item to see exactly who it is delivered to,
+  vendor, order date, and highlighted orange custom instructions.
+- SEARCHING: Use the search bar to filter instantly by food names, customers,
+  vendors, or notes.
+- SORTING: Sort menu items by High/Low quantities, A-Z names, or order counts.
+- PRINT KITCHEN REPORT: Click Print (or Ctrl+P) to generate clean, paper-optimized
+  reports with non-essential elements (like search bars and upload boxes) hidden.
+
+========================================================================
+                Thank you for using Catering Order Manager!
+========================================================================
