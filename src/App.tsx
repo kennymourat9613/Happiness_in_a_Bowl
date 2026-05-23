@@ -1245,6 +1245,7 @@ export default function App() {
                       <tr className="border-b border-slate-100 bg-slate-50/50">
                         <th className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase">🍛 Menu Item</th>
                         <th className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase">📦 Total Quantity</th>
+                        <th className="px-4 py-3 text-right text-xs font-bold text-slate-500 uppercase">🏷️ Unit Price</th>
                         <th className="px-4 py-3 text-right text-xs font-bold text-slate-500 uppercase">💰 Total Subtotal</th>
                       </tr>
                     </thead>
@@ -1271,11 +1272,12 @@ export default function App() {
                                   {item.totalQty} units
                                 </span>
                               </td>
+                              <td className="px-4 py-4 text-sm text-slate-600 text-right">Rs. {(item.totalQty > 0 ? item.totalCost / item.totalQty : 0).toFixed(2)}</td>
                               <td className="px-4 py-4 text-sm font-bold text-indigo-600 text-right">Rs. {item.totalCost.toFixed(2)}</td>
                             </tr>
                             {isExpanded && (
                               <tr>
-                                <td colSpan={3} className="px-6 py-4 bg-slate-50/60 border-y border-slate-100">
+                                <td colSpan={4} className="px-6 py-4 bg-slate-50/60 border-y border-slate-100">
                                   <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2.5">
                                     📋 Verification Details ({item.occurrences.length} record{item.occurrences.length !== 1 ? 's' : ''}):
                                   </div>
@@ -1315,6 +1317,7 @@ export default function App() {
                         <td className="px-4 py-4 text-sm text-indigo-900 font-extrabold">
                           {cumulativeBreakdown.reduce((sum, item) => sum + item.totalQty, 0)} units
                         </td>
+                        <td className="px-4 py-4"></td>
                         <td className="px-4 py-4 text-sm text-indigo-600 text-right font-extrabold">
                           Rs. {cumulativeBreakdown.reduce((sum, item) => sum + item.totalCost, 0).toFixed(2)}
                         </td>
