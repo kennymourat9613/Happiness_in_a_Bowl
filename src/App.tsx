@@ -4,6 +4,8 @@ import { parseOrders, parseMenuItems, parseHistoricalDaily, parseVendorOrdersAsS
 import { cn } from './utils/cn';
 import * as XLSX from 'xlsx';
 import OrderChecker from './components/OrderChecker';
+import { supabase } from './lib/supabase';
+import { getItem, setItem, removeItem } from './lib/storage';
 
 /* ─── Icons ─── */
 function UploadIcon() {
@@ -411,59 +413,58 @@ export default function App() {
   const [showGuide, setShowGuide] = useState(false);
   const [expandedItem, setExpandedItem] = useState<string | null>(null);
 
-  // Load saved daily totals and menu prices from localStorage on mount
+  // Load saved data from Supabase on mount
   useEffect(() => {
-    const saved = localStorage.getItem('catering_saved_totals');
-    if (saved) {
+    async function load() {
       try {
-        setSavedTotals(JSON.parse(saved));
+        const saved = await getItem('catering_saved_totals');
+        if (saved) setSavedTotals(saved as SavedDailyTotal[]);
       } catch (e) {
-        console.error('Failed to parse saved totals', e);
+        console.error('Failed to load saved totals', e);
       }
-    }
 
-    const savedUploadsRaw = localStorage.getItem('catering_summary_uploads');
-    if (savedUploadsRaw) {
       try {
-        setSavedUploads(JSON.parse(savedUploadsRaw));
+        const savedUploadsRaw = await getItem('catering_summary_uploads');
+        if (savedUploadsRaw) setSavedUploads(savedUploadsRaw as SavedSummaryUpload[]);
       } catch (e) {
-        console.error('Failed to parse saved uploads', e);
+        console.error('Failed to load saved uploads', e);
       }
-    }
 
-    const savedMenu = localStorage.getItem('catering_menu_items');
-    const savedMenuName = localStorage.getItem('catering_menu_filename');
-    const savedMenuTime = localStorage.getItem('catering_menu_upload_timestamp');
-
-    if (savedMenu && savedMenuName && savedMenuTime) {
       try {
-        const timestamp = parseInt(savedMenuTime, 10);
-        const threeMonthsMs = 90 * 24 * 60 * 60 * 1000;
-        
-        // If older than 3 months (90 days), let the user know but keep it so they can still use it or re-upload.
-        if (Date.now() - timestamp > threeMonthsMs) {
-          console.warn('Catering Menu Prices are older than 3 months. Recommended to update.');
+        const savedMenu = await getItem('catering_menu_items');
+        const savedMenuName = await getItem('catering_menu_filename');
+        const savedMenuTime = await getItem('catering_menu_upload_timestamp');
+
+        if (savedMenu && savedMenuName && savedMenuTime) {
+          const timestamp = savedMenuTime as number;
+          const threeMonthsMs = 90 * 24 * 60 * 60 * 1000;
+
+          if (Date.now() - timestamp > threeMonthsMs) {
+            console.warn('Catering Menu Prices are older than 3 months. Recommended to update.');
+          }
+
+          setMenuItems(savedMenu as MenuItemInfo[]);
+          setMenuFileName(savedMenuName as string);
+          setMenuUploadTimestamp(timestamp);
         }
-
-        setMenuItems(JSON.parse(savedMenu));
-        setMenuFileName(savedMenuName);
-        setMenuUploadTimestamp(timestamp);
       } catch (e) {
-        console.error('Failed to load menu from localStorage', e);
+        console.error('Failed to load menu from storage', e);
       }
-    }
 
-    // Recover active orders if they refreshed/scrolled on their tablet accidentally
-    const savedActiveOrders = localStorage.getItem('catering_active_orders');
-    const savedActiveFilename = localStorage.getItem('catering_active_filename');
-    if (savedActiveOrders && savedActiveFilename) {
+      // Recover active orders if they refreshed/scrolled on their tablet accidentally
       try {
-        setOrders(JSON.parse(savedActiveOrders));
-        setFileName(savedActiveFilename);
+        const savedActiveOrders = await getItem('catering_active_orders');
+        const savedActiveFilename = await getItem('catering_active_filename');
+        if (savedActiveOrders && savedActiveFilename) {
+          setOrders(savedActiveOrders as Order[]);
+          setFileName(savedActiveFilename as string);
+        }
       } catch (e) {
         console.error('Failed to restore active orders', e);
       }
     }
+
+    void load();
   }, []);
 
   const handleFile = useCallback((text: string) => {
@@ -472,10 +473,10 @@ export default function App() {
       setOrders(parsed);
       setError(null);
       setFileName('orders.csv');
-      
+
       // Save active batch so tablet users don't lose progress on pull-to-refresh
-      localStorage.setItem('catering_active_orders', JSON.stringify(parsed));
-      localStorage.setItem('catering_active_filename', 'orders.csv');
+      void setItem('catering_active_orders', parsed);
+      void setItem('catering_active_filename', 'orders.csv');
     } catch (e) {
       setError((e as Error).message);
       setOrders([]);
@@ -486,15 +487,15 @@ export default function App() {
     try {
       const parsed = parseMenuItems(text);
       const timestamp = Date.now();
-      
+
       setMenuItems(parsed);
       setMenuError(null);
       setMenuFileName(name);
       setMenuUploadTimestamp(timestamp);
 
-      localStorage.setItem('catering_menu_items', JSON.stringify(parsed));
-      localStorage.setItem('catering_menu_filename', name);
-      localStorage.setItem('catering_menu_upload_timestamp', timestamp.toString());
+      void setItem('catering_menu_items', parsed);
+      void setItem('catering_menu_filename', name);
+      void setItem('catering_menu_upload_timestamp', timestamp);
     } catch (e) {
       setMenuError((e as Error).message);
       setMenuItems([]);
@@ -505,15 +506,15 @@ export default function App() {
     setMenuItems([]);
     setMenuFileName('');
     setMenuUploadTimestamp(null);
-    localStorage.removeItem('catering_menu_items');
-    localStorage.removeItem('catering_menu_filename');
-    localStorage.removeItem('catering_menu_upload_timestamp');
+    void removeItem('catering_menu_items');
+    void removeItem('catering_menu_filename');
+    void removeItem('catering_menu_upload_timestamp');
   }, []);
 
-  // Persist savedUploads to state + localStorage
+  // Persist savedUploads to state + Supabase
   const persistUploads = useCallback((next: SavedSummaryUpload[]) => {
     setSavedUploads(next);
-    localStorage.setItem('catering_summary_uploads', JSON.stringify(next));
+    void setItem('catering_summary_uploads', next);
   }, []);
 
   // Compute a content-based signature for dedup
@@ -574,7 +575,7 @@ export default function App() {
       };
 
       const next = [newUpload, ...prevUploads];
-      localStorage.setItem('catering_summary_uploads', JSON.stringify(next));
+      void setItem('catering_summary_uploads', next);
       setHistoricalError(null);
       return next;
     });
@@ -586,7 +587,7 @@ export default function App() {
     if (!trimmed) return;
     setSavedUploads((prev) => {
       const next = prev.map((u) => u.id === id ? { ...u, name: trimmed } : u);
-      localStorage.setItem('catering_summary_uploads', JSON.stringify(next));
+      void setItem('catering_summary_uploads', next);
       return next;
     });
   }, []);
@@ -595,7 +596,7 @@ export default function App() {
   const handleDeleteUpload = useCallback((id: string) => {
     setSavedUploads((prev) => {
       const next = prev.filter((u) => u.id !== id);
-      localStorage.setItem('catering_summary_uploads', JSON.stringify(next));
+      void setItem('catering_summary_uploads', next);
       return next;
     });
   }, []);
@@ -665,7 +666,7 @@ export default function App() {
     }, 0);
   }, [grouped, getMenuItemInfo]);
 
-  // Save Daily Total to localStorage
+  // Save Daily Total to shared database
   const handleSaveDailyTotal = useCallback(() => {
     if (orders.length === 0) return;
     const today = new Date().toISOString().slice(0, 10);
@@ -691,15 +692,15 @@ export default function App() {
     };
     const updated = [newTotal, ...savedTotals];
     setSavedTotals(updated);
-    localStorage.setItem('catering_saved_totals', JSON.stringify(updated));
-    alert('Daily order summary total saved to local PC successfully!');
+    void setItem('catering_saved_totals', updated);
+    alert('Daily order summary saved to the shared database successfully!');
   }, [orders, fileName, totalItems, activeBatchTotalCost, savedTotals]);
 
   // Delete saved total
   const handleDeleteSavedTotal = useCallback((id: string) => {
     const updated = savedTotals.filter((t) => t.id !== id);
     setSavedTotals(updated);
-    localStorage.setItem('catering_saved_totals', JSON.stringify(updated));
+    void setItem('catering_saved_totals', updated);
   }, [savedTotals]);
 
   // Export Daily Summary CSV
@@ -813,8 +814,8 @@ export default function App() {
     setFileName('');
     setSearch('');
     setError(null);
-    localStorage.removeItem('catering_active_orders');
-    localStorage.removeItem('catering_active_filename');
+    void removeItem('catering_active_orders');
+    void removeItem('catering_active_filename');
   };
 
   const handleResetHistorical = () => {
@@ -855,6 +856,12 @@ export default function App() {
               className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl text-sm font-semibold transition-colors"
             >
               📖 User Guide
+            </button>
+            <button
+              onClick={() => supabase.auth.signOut()}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors"
+            >
+              Sign out
             </button>
             {orders.length > 0 && (
               <>
@@ -965,7 +972,7 @@ export default function App() {
                             <strong>{menuFileName}</strong> ({menuItems.length} items)
                             {menuDaysLeft !== null && (
                               <span className="block mt-0.5 font-medium text-emerald-700">
-                                📅 Stored locally. {menuDaysLeft > 0 ? `Expires in ${menuDaysLeft} days` : 'Expired (older than 3 months)'}
+                                📅 Stored in database. {menuDaysLeft > 0 ? `Expires in ${menuDaysLeft} days` : 'Expired (older than 3 months)'}
                               </span>
                             )}
                           </>
@@ -1118,7 +1125,7 @@ export default function App() {
                     onClick={handleSaveDailyTotal}
                     className="inline-flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-semibold transition-colors"
                   >
-                    💾 Save Daily Total Locally
+                    💾 Save Daily Total
                   </button>
                   <button
                     onClick={handlePrint}
@@ -1136,7 +1143,7 @@ export default function App() {
             <div className="bg-white rounded-3xl p-6 md:p-8 shadow-sm border border-slate-200">
               <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Total Cost Calculator</h2>
               <p className="text-slate-500 mt-1 max-w-2xl text-sm">
-                Calculate the total combined cost of all previous daily orders. You can upload previously exported Daily CSV summaries below, or view/manage totals saved to this local PC.
+                Calculate the total combined cost of all previous daily orders. You can upload previously exported Daily CSV summaries below, or view/manage totals saved to the shared database.
               </p>
 
               {/* Historical Upload Area */}
@@ -1201,7 +1208,7 @@ export default function App() {
                 <p className="text-3xl font-extrabold mt-1">
                   Rs. {(cumulativeHistoricalCost + savedTotals.reduce((sum, t) => sum + t.totalCost, 0)).toFixed(2)}
                 </p>
-                <p className="text-xs text-indigo-200 mt-1">Combined from uploaded CSVs + saved PC records</p>
+                <p className="text-xs text-indigo-200 mt-1">Combined from uploaded CSVs + saved database records</p>
               </div>
 
               <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
@@ -1218,7 +1225,7 @@ export default function App() {
                   {savedUploads.length + savedTotals.length}
                 </p>
                 <p className="text-xs text-slate-400 mt-1">
-                  {savedUploads.length} uploaded files • {savedTotals.length} saved on PC
+                  {savedUploads.length} uploaded files • {savedTotals.length} saved records
                 </p>
               </div>
             </div>
@@ -1384,12 +1391,12 @@ export default function App() {
               </div>
             )}
 
-            {/* Saved Daily Totals list (localStorage) */}
+            {/* Saved Daily Totals list */}
             <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-200">
-              <h3 className="font-bold text-slate-900 border-b border-slate-100 pb-4 mb-4">Saved Daily Totals (On Local PC)</h3>
+              <h3 className="font-bold text-slate-900 border-b border-slate-100 pb-4 mb-4">Saved Daily Totals</h3>
               {savedTotals.length === 0 ? (
                 <div className="text-center py-8 text-slate-400 text-sm">
-                  No saved daily totals yet. Go to "Active Batch Processor", load orders, and click "Save Daily Total Locally".
+                  No saved daily totals yet. Go to "Active Batch Processor", load orders, and click "Save Daily Total".
                 </div>
               ) : (
                 <div className="overflow-x-auto">
