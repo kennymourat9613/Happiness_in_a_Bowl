@@ -1366,6 +1366,7 @@ export default function App() {
                         <th className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase">Date</th>
                         <th className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase">Format</th>
                         <th className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase">Items</th>
+                        <th className="px-4 py-3 text-right text-xs font-bold text-slate-500 uppercase">Total Cost</th>
                         <th className="px-4 py-3 text-right text-xs font-bold text-slate-500 uppercase">Action</th>
                       </tr>
                     </thead>
@@ -1396,6 +1397,9 @@ export default function App() {
                             </span>
                           </td>
                           <td className="px-4 py-3 text-sm text-slate-500">{upload.summaries.length} items</td>
+                          <td className="px-4 py-3 text-sm text-right font-semibold text-indigo-600">
+                            Rs. {upload.summaries.reduce((sum, s) => sum + s.subtotal, 0).toFixed(2)}
+                          </td>
                           <td className="px-4 py-3 text-sm text-right">
                             <button
                               onClick={() => handleDeleteUpload(upload.id)}
