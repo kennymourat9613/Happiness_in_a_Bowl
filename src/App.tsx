@@ -1399,6 +1399,14 @@ export default function App() {
                                 }}
                                 className="w-full text-slate-800 font-medium bg-transparent border border-transparent hover:border-slate-200 focus:border-indigo-400 focus:outline-none rounded-lg px-2 py-1 transition-colors"
                               />
+                              {upload.summaries.some((s) => s.subtotal === 0) && (
+                                <span
+                                  title="This upload contains one or more items with a subtotal of Rs. 0 (missing price). Expand to review."
+                                  className="inline-flex items-center justify-center h-5 w-5 flex-shrink-0 rounded-full bg-red-100 text-red-600 text-xs font-bold"
+                                >
+                                  !
+                                </span>
+                              )}
                             </div>
                           </td>
                           <td className="px-4 py-3 text-sm text-slate-500">
