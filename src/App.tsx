@@ -412,6 +412,7 @@ export default function App() {
   const [menuUploadTimestamp, setMenuUploadTimestamp] = useState<number | null>(null);
   const [showGuide, setShowGuide] = useState(false);
   const [expandedItem, setExpandedItem] = useState<string | null>(null);
+  const [occSortAsc, setOccSortAsc] = useState(false);
 
   // Load saved data from Supabase on mount
   useEffect(() => {
@@ -1285,14 +1286,23 @@ export default function App() {
                                     <table className="w-full">
                                       <thead>
                                         <tr className="bg-slate-50 border-b border-slate-100 text-[10px] font-bold text-slate-500 uppercase">
-                                          <th className="px-4 py-2 text-left">📅 Date</th>
+                                          <th className="px-4 py-2 text-left">
+                                            <button
+                                              type="button"
+                                              onClick={() => setOccSortAsc((prev) => !prev)}
+                                              className="inline-flex items-center gap-1 uppercase font-bold text-slate-500 hover:text-indigo-600 transition-colors"
+                                            >
+                                              📅 Date
+                                              <span className="text-slate-400">{occSortAsc ? '▲' : '▼'}</span>
+                                            </button>
+                                          </th>
                                           <th className="px-4 py-2 text-left">📂 Source Record/File</th>
                                           <th className="px-4 py-2 text-center">Qty</th>
                                           <th className="px-4 py-2 text-right">Subtotal</th>
                                         </tr>
                                       </thead>
                                       <tbody className="divide-y divide-slate-100">
-                                        {item.occurrences.map((occ, oIdx) => (
+                                        {[...item.occurrences].sort((a, b) => occSortAsc ? a.date.localeCompare(b.date) : b.date.localeCompare(a.date)).map((occ, oIdx) => (
                                           <tr key={oIdx} className="hover:bg-slate-50/30 text-xs">
                                             <td className="px-4 py-2 text-slate-700 font-medium">{occ.date}</td>
                                             <td className="px-4 py-2 text-slate-500 font-mono text-[11px]">{occ.source}</td>
