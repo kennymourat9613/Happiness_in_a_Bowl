@@ -413,6 +413,7 @@ export default function App() {
   const [showGuide, setShowGuide] = useState(false);
   const [expandedItem, setExpandedItem] = useState<string | null>(null);
   const [occSortAsc, setOccSortAsc] = useState(false);
+  const [expandedUpload, setExpandedUpload] = useState<string | null>(null);
 
   // Load saved data from Supabase on mount
   useEffect(() => {
@@ -1371,18 +1372,34 @@ export default function App() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {savedUploads.map((upload) => (
-                        <tr key={upload.id} className="hover:bg-slate-50/50">
+                      {savedUploads.map((upload) => {
+                        const isUploadExpanded = expandedUpload === upload.id;
+                        return (
+                        <Fragment key={upload.id}>
+                        <tr className="hover:bg-slate-50/50">
                           <td className="px-4 py-3 text-sm">
-                            <input
-                              type="text"
-                              defaultValue={upload.name}
-                              onBlur={(e) => handleRenameUpload(upload.id, e.target.value)}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-                              }}
-                              className="w-full text-slate-800 font-medium bg-transparent border border-transparent hover:border-slate-200 focus:border-indigo-400 focus:outline-none rounded-lg px-2 py-1 transition-colors"
-                            />
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => setExpandedUpload(isUploadExpanded ? null : upload.id)}
+                                title="Show items"
+                                className={cn(
+                                  "text-xs transition-transform flex-shrink-0",
+                                  isUploadExpanded ? "rotate-90 text-indigo-600" : "text-slate-400 hover:text-slate-600"
+                                )}
+                              >
+                                ▶
+                              </button>
+                              <input
+                                type="text"
+                                defaultValue={upload.name}
+                                onBlur={(e) => handleRenameUpload(upload.id, e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                                }}
+                                className="w-full text-slate-800 font-medium bg-transparent border border-transparent hover:border-slate-200 focus:border-indigo-400 focus:outline-none rounded-lg px-2 py-1 transition-colors"
+                              />
+                            </div>
                           </td>
                           <td className="px-4 py-3 text-sm text-slate-500">
                             {upload.date || <span className="italic text-slate-400">—</span>}
@@ -1409,7 +1426,50 @@ export default function App() {
                             </button>
                           </td>
                         </tr>
-                      ))}
+                        {isUploadExpanded && (
+                          <tr>
+                            <td colSpan={6} className="px-6 py-4 bg-slate-50/60 border-y border-slate-100">
+                              <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2.5">
+                                Items ({upload.summaries.length})
+                              </div>
+                              <div className="overflow-hidden rounded-xl border border-slate-100 bg-white shadow-sm">
+                                <table className="w-full">
+                                  <thead>
+                                    <tr className="bg-slate-50 border-b border-slate-100 text-[10px] font-bold text-slate-500 uppercase">
+                                      <th className="px-4 py-2 text-left">Menu Item</th>
+                                      <th className="px-4 py-2 text-center">Qty</th>
+                                      <th className="px-4 py-2 text-right">Unit Price</th>
+                                      <th className="px-4 py-2 text-right">Subtotal</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-slate-100">
+                                    {upload.summaries.map((s, sIdx) => (
+                                      <tr key={sIdx} className="hover:bg-slate-50/30 text-xs">
+                                        <td className="px-4 py-2 text-slate-700 font-medium">
+                                          {s.menuItem}
+                                          {s.subtotal === 0 && (
+                                            <span
+                                              title="Subtotal is Rs. 0 (missing price)."
+                                              className="ml-2 inline-flex items-center justify-center h-4 w-4 rounded-full bg-red-100 text-red-600 text-[10px] font-bold"
+                                            >
+                                              !
+                                            </span>
+                                          )}
+                                        </td>
+                                        <td className="px-4 py-2 text-slate-700 text-center font-semibold">{s.totalQuantity}</td>
+                                        <td className="px-4 py-2 text-slate-600 text-right">Rs. {s.price.toFixed(2)}</td>
+                                        <td className="px-4 py-2 text-indigo-600 text-right font-semibold">Rs. {s.subtotal.toFixed(2)}</td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                        </Fragment>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
