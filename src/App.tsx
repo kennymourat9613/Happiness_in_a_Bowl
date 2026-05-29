@@ -1267,6 +1267,14 @@ export default function App() {
                                   ▶
                                 </span>
                                 {item.displayName}
+                                {item.occurrences.some((occ) => occ.subtotal === 0) && (
+                                  <span
+                                    title="One or more records have a subtotal of Rs. 0 (missing price). Click to review."
+                                    className="inline-flex items-center justify-center h-5 w-5 rounded-full bg-red-100 text-red-600 text-xs font-bold"
+                                  >
+                                    !
+                                  </span>
+                                )}
                               </td>
                               <td className="px-4 py-4 text-sm text-slate-500">
                                 <span className="bg-slate-100 text-slate-700 px-2.5 py-1 rounded-full text-xs font-medium">
