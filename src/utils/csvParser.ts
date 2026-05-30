@@ -92,18 +92,16 @@ export function parseOrders(csvText: string): Order[] {
   const orderNoteIdx = findHeader(['note', 'notes']);
   const statusIdx = findHeader(['status']);
 
-  if (
-    clientIdx === -1 ||
-    orderDateIdx === -1 ||
-    menuItemIdx === -1 ||
-    quantityIdx === -1 ||
-    productVendorIdx === -1 ||
-    orderNoteIdx === -1
-  ) {
+  // Accepts both the vendor export (has a Status column; only "accepted" rows count)
+  // and the "Daily" source-of-truth file (Client Name, Date, Product, Quantity,
+  // Vendor Name, Note — no Status, so every row counts). Vendor/Note/Date are optional.
+  if (clientIdx === -1 || menuItemIdx === -1 || quantityIdx === -1) {
     throw new Error(
-      'CSV headers do not match expected format. Expected headers: "vendor", "Product", "client", "Quantity", "Note", "Date"'
+      'CSV headers do not match expected format. Expected at least: "client", "Product", "Quantity" (plus optional "Vendor", "Note", "Date").'
     );
   }
+
+  const valueAt = (values: string[], idx: number): string => (idx === -1 ? '' : values[idx] || '');
 
   const orders: Order[] = [];
 
@@ -112,19 +110,19 @@ export function parseOrders(csvText: string): Order[] {
 
     // Skip rows where all relevant fields are empty (ignores data in ignored columns)
     if (
-      !values[clientIdx]?.trim() &&
-      !values[menuItemIdx]?.trim() &&
-      !values[productVendorIdx]?.trim() &&
-      !values[orderDateIdx]?.trim()
+      !valueAt(values, clientIdx).trim() &&
+      !valueAt(values, menuItemIdx).trim() &&
+      !valueAt(values, productVendorIdx).trim() &&
+      !valueAt(values, orderDateIdx).trim()
     ) continue;
 
     // Only include accepted orders when a status column is present
     if (statusIdx !== -1 && values[statusIdx]?.trim().toLowerCase() !== 'accepted') continue;
 
-    const quantityStr = values[quantityIdx]?.replace(/[^0-9.-]/g, '');
+    const quantityStr = valueAt(values, quantityIdx).replace(/[^0-9.-]/g, '');
     const quantity = parseInt(quantityStr, 10);
 
-    const clientFull = values[clientIdx] || '';
+    const clientFull = valueAt(values, clientIdx);
     const spaceIdx = clientFull.indexOf(' ');
     const firstName = spaceIdx !== -1 ? clientFull.slice(0, spaceIdx) : clientFull;
     const lastName = spaceIdx !== -1 ? clientFull.slice(spaceIdx + 1) : '';
@@ -132,11 +130,11 @@ export function parseOrders(csvText: string): Order[] {
     orders.push({
       firstName,
       lastName,
-      orderDate: values[orderDateIdx] || '',
-      menuItem: values[menuItemIdx] || '',
+      orderDate: valueAt(values, orderDateIdx),
+      menuItem: valueAt(values, menuItemIdx),
       quantity: isNaN(quantity) ? 1 : quantity,
-      productVendor: values[productVendorIdx] || '',
-      orderNote: values[orderNoteIdx] || '',
+      productVendor: valueAt(values, productVendorIdx),
+      orderNote: valueAt(values, orderNoteIdx),
     });
   }
 
