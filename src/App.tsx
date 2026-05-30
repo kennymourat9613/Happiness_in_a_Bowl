@@ -415,6 +415,15 @@ export default function App() {
   const [occSortAsc, setOccSortAsc] = useState(false);
   const [expandedUpload, setExpandedUpload] = useState<string | null>(null);
 
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const todayYmd = todayIso.replace(/-/g, '');
+  const [showRefrensModal, setShowRefrensModal] = useState(false);
+  const [refrensClientName, setRefrensClientName] = useState('');
+  const [refrensInvoiceNumber, setRefrensInvoiceNumber] = useState(`INV-${todayYmd}`);
+  const [refrensInvoiceDate, setRefrensInvoiceDate] = useState(todayIso);
+  const [refrensCurrency, setRefrensCurrency] = useState('MUR');
+  const [refrensCountry, setRefrensCountry] = useState('MU');
+
   // Load saved data from Supabase on mount
   useEffect(() => {
     async function load() {
@@ -729,6 +738,35 @@ export default function App() {
     link.click();
     document.body.removeChild(link);
   }, [grouped, getMenuItemInfo]);
+
+  const handleExportRefrensCSV = useCallback(() => {
+    if (cumulativeBreakdown.length === 0) return;
+
+    const escapeField = (val: string) => {
+      if (/[",\n\r]/.test(val)) return `"${val.replace(/"/g, '""')}"`;
+      return val;
+    };
+
+    const [yyyy, mm, dd] = refrensInvoiceDate.split('-');
+    const invoiceDateFormatted = `${dd}-${mm}-${yyyy}`;
+
+    let csv = 'clientName,invoiceNumber,invoiceDate,lineItem,rate,quantity,currency,country\r\n';
+    for (const item of cumulativeBreakdown) {
+      const rate = item.totalQty > 0 ? item.totalCost / item.totalQty : 0;
+      csv += `${escapeField(refrensClientName)},${escapeField(refrensInvoiceNumber)},${invoiceDateFormatted},${escapeField(item.displayName)},${rate.toFixed(2)},${item.totalQty},${refrensCurrency},${refrensCountry}\r\n`;
+    }
+
+    const safeInvoiceNumber = refrensInvoiceNumber.replace(/[^\w\-]/g, '_');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `refrens_invoice_${safeInvoiceNumber}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setShowRefrensModal(false);
+  }, [cumulativeBreakdown, refrensClientName, refrensInvoiceNumber, refrensInvoiceDate, refrensCurrency, refrensCountry]);
 
   // Historical calculations
   const cumulativeHistoricalCost = useMemo(() => {
@@ -1235,9 +1273,17 @@ export default function App() {
             {/* Total Menu Item Cost Breakdown */}
             {cumulativeBreakdown.length > 0 && (
               <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-200">
-                <h3 className="font-bold text-slate-900 border-b border-slate-100 pb-4 mb-4 flex items-center gap-2">
-                  <span>📊</span> Total Menu Item Cost Breakdown & Verification
-                </h3>
+                <div className="flex items-center justify-between border-b border-slate-100 pb-4 mb-4">
+                  <h3 className="font-bold text-slate-900 flex items-center gap-2">
+                    <span>📊</span> Total Menu Item Cost Breakdown & Verification
+                  </h3>
+                  <button
+                    onClick={() => setShowRefrensModal(true)}
+                    className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold transition-colors"
+                  >
+                    Download Refrens Invoice CSV
+                  </button>
+                </div>
                 <p className="text-xs text-slate-400 mb-4">
                   💡 Click on any menu item row below to expand its history, dates ordered, and verify sources.
                 </p>
@@ -1646,6 +1692,92 @@ export default function App() {
                 className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-semibold transition-colors"
               >
                 Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showRefrensModal && (
+        <div className="no-print fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+          <div className="bg-white rounded-3xl max-w-md w-full shadow-2xl flex flex-col">
+            <div className="flex items-center justify-between p-6 border-b border-slate-100">
+              <div>
+                <h3 className="text-xl font-bold text-slate-900">Download Refrens Invoice CSV</h3>
+                <p className="text-xs text-slate-500">Fill in invoice details before downloading</p>
+              </div>
+              <button
+                onClick={() => setShowRefrensModal(false)}
+                className="h-10 w-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-600 hover:bg-slate-200 transition-colors"
+              >
+                <XIcon />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Client Name <span className="text-red-500">*</span></label>
+                <input
+                  type="text"
+                  value={refrensClientName}
+                  onChange={e => setRefrensClientName(e.target.value)}
+                  placeholder="e.g. Acme Pvt Ltd"
+                  className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Invoice Number</label>
+                <input
+                  type="text"
+                  value={refrensInvoiceNumber}
+                  onChange={e => setRefrensInvoiceNumber(e.target.value)}
+                  className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Invoice Date</label>
+                <input
+                  type="date"
+                  value={refrensInvoiceDate}
+                  onChange={e => setRefrensInvoiceDate(e.target.value)}
+                  className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                />
+              </div>
+              <div className="flex gap-3">
+                <div className="flex-1">
+                  <label className="block text-xs font-semibold text-slate-600 mb-1">Currency</label>
+                  <input
+                    type="text"
+                    value={refrensCurrency}
+                    onChange={e => setRefrensCurrency(e.target.value.toUpperCase())}
+                    maxLength={3}
+                    className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                  />
+                </div>
+                <div className="flex-1">
+                  <label className="block text-xs font-semibold text-slate-600 mb-1">Country</label>
+                  <input
+                    type="text"
+                    value={refrensCountry}
+                    onChange={e => setRefrensCountry(e.target.value.toUpperCase())}
+                    maxLength={2}
+                    className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="p-6 border-t border-slate-100 flex justify-end gap-3">
+              <button
+                onClick={() => setShowRefrensModal(false)}
+                className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-sm font-semibold transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleExportRefrensCSV}
+                disabled={!refrensClientName.trim()}
+                className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl text-sm font-semibold transition-colors"
+              >
+                Download CSV
               </button>
             </div>
           </div>
