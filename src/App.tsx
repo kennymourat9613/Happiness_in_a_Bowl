@@ -739,35 +739,6 @@ export default function App() {
     document.body.removeChild(link);
   }, [grouped, getMenuItemInfo]);
 
-  const handleExportRefrensCSV = useCallback(() => {
-    if (cumulativeBreakdown.length === 0) return;
-
-    const escapeField = (val: string) => {
-      if (/[",\n\r]/.test(val)) return `"${val.replace(/"/g, '""')}"`;
-      return val;
-    };
-
-    const [yyyy, mm, dd] = refrensInvoiceDate.split('-');
-    const invoiceDateFormatted = `${dd}-${mm}-${yyyy}`;
-
-    let csv = 'clientName,invoiceNumber,invoiceDate,lineItem,rate,quantity,currency,country\r\n';
-    for (const item of cumulativeBreakdown) {
-      const rate = item.totalQty > 0 ? item.totalCost / item.totalQty : 0;
-      csv += `${escapeField(refrensClientName)},${escapeField(refrensInvoiceNumber)},${invoiceDateFormatted},${escapeField(item.displayName)},${rate.toFixed(2)},${item.totalQty},${refrensCurrency},${refrensCountry}\r\n`;
-    }
-
-    const safeInvoiceNumber = refrensInvoiceNumber.replace(/[^\w\-]/g, '_');
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.setAttribute('download', `refrens_invoice_${safeInvoiceNumber}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    setShowRefrensModal(false);
-  }, [cumulativeBreakdown, refrensClientName, refrensInvoiceNumber, refrensInvoiceDate, refrensCurrency, refrensCountry]);
-
   // Historical calculations
   const cumulativeHistoricalCost = useMemo(() => {
     return historicalSummaries.reduce((sum, item) => sum + item.subtotal, 0);
@@ -846,6 +817,35 @@ export default function App() {
       occurrences: value.occurrences,
     }));
   }, [savedUploads, savedTotals]);
+
+  const handleExportRefrensCSV = useCallback(() => {
+    if (cumulativeBreakdown.length === 0) return;
+
+    const escapeField = (val: string) => {
+      if (/[",\n\r]/.test(val)) return `"${val.replace(/"/g, '""')}"`;
+      return val;
+    };
+
+    const [yyyy, mm, dd] = refrensInvoiceDate.split('-');
+    const invoiceDateFormatted = `${dd}-${mm}-${yyyy}`;
+
+    let csv = 'clientName,invoiceNumber,invoiceDate,lineItem,rate,quantity,currency,country\r\n';
+    for (const item of cumulativeBreakdown) {
+      const rate = item.totalQty > 0 ? item.totalCost / item.totalQty : 0;
+      csv += `${escapeField(refrensClientName)},${escapeField(refrensInvoiceNumber)},${invoiceDateFormatted},${escapeField(item.displayName)},${rate.toFixed(2)},${item.totalQty},${refrensCurrency},${refrensCountry}\r\n`;
+    }
+
+    const safeInvoiceNumber = refrensInvoiceNumber.replace(/[^\w\-]/g, '_');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `refrens_invoice_${safeInvoiceNumber}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setShowRefrensModal(false);
+  }, [cumulativeBreakdown, refrensClientName, refrensInvoiceNumber, refrensInvoiceDate, refrensCurrency, refrensCountry]);
 
   const handlePrint = () => window.print();
 
