@@ -429,6 +429,9 @@ export default function App() {
   const todayYmd = todayIso.replace(/-/g, '');
   const [showRefrensModal, setShowRefrensModal] = useState(false);
   const [refrensClientName, setRefrensClientName] = useState('');
+  const [refrensClientEmail, setRefrensClientEmail] = useState('');
+  const [refrensClientVat, setRefrensClientVat] = useState('');
+  const [refrensClientPhone, setRefrensClientPhone] = useState('');
   const [refrensInvoiceNumber, setRefrensInvoiceNumber] = useState(`INV-${todayYmd}`);
   const [refrensInvoiceDate, setRefrensInvoiceDate] = useState(todayIso);
   const [refrensCurrency, setRefrensCurrency] = useState('MUR');
@@ -839,10 +842,10 @@ export default function App() {
     const [yyyy, mm, dd] = refrensInvoiceDate.split('-');
     const invoiceDateFormatted = `${dd}-${mm}-${yyyy}`;
 
-    let csv = 'clientName,invoiceNumber,invoiceDate,lineItem,sku,amount,quantity,currency,clientCountry\r\n';
+    let csv = 'clientName,clientEmail,clientVatNumber,clientPhone,invoiceNumber,invoiceDate,lineItem,sku,amount,quantity,currency,clientCountry\r\n';
     for (const item of cumulativeBreakdown) {
       const amount = item.totalQty > 0 ? item.totalCost / item.totalQty : 0;
-      csv += `${escapeField(refrensClientName)},${escapeField(refrensInvoiceNumber)},${invoiceDateFormatted},${escapeField(item.displayName)},${makeSku(item.displayName)},${amount.toFixed(2)},${item.totalQty},${refrensCurrency},${refrensCountry}\r\n`;
+      csv += `${escapeField(refrensClientName)},${escapeField(refrensClientEmail)},${escapeField(refrensClientVat)},${escapeField(refrensClientPhone)},${escapeField(refrensInvoiceNumber)},${invoiceDateFormatted},${escapeField(item.displayName)},${makeSku(item.displayName)},${amount.toFixed(2)},${item.totalQty},${refrensCurrency},${refrensCountry}\r\n`;
     }
 
     const safeInvoiceNumber = refrensInvoiceNumber.replace(/[^\w\-]/g, '_');
@@ -855,7 +858,7 @@ export default function App() {
     link.click();
     document.body.removeChild(link);
     setShowRefrensModal(false);
-  }, [cumulativeBreakdown, refrensClientName, refrensInvoiceNumber, refrensInvoiceDate, refrensCurrency, refrensCountry]);
+  }, [cumulativeBreakdown, refrensClientName, refrensClientEmail, refrensClientVat, refrensClientPhone, refrensInvoiceNumber, refrensInvoiceDate, refrensCurrency, refrensCountry]);
 
   const handleExportInventoryCSV = useCallback(() => {
     if (cumulativeBreakdown.length === 0) return;
@@ -1779,6 +1782,39 @@ export default function App() {
                   value={refrensClientName}
                   onChange={e => setRefrensClientName(e.target.value)}
                   placeholder="e.g. Acme Pvt Ltd"
+                  className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                />
+                <p className="text-[11px] text-slate-400 mt-1">To link an existing Refrens client, fill in the matching email, VAT, or phone below.</p>
+              </div>
+              <div className="flex gap-3">
+                <div className="flex-1">
+                  <label className="block text-xs font-semibold text-slate-600 mb-1">Client Email</label>
+                  <input
+                    type="email"
+                    value={refrensClientEmail}
+                    onChange={e => setRefrensClientEmail(e.target.value)}
+                    placeholder="optional"
+                    className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                  />
+                </div>
+                <div className="flex-1">
+                  <label className="block text-xs font-semibold text-slate-600 mb-1">Client VAT No.</label>
+                  <input
+                    type="text"
+                    value={refrensClientVat}
+                    onChange={e => setRefrensClientVat(e.target.value)}
+                    placeholder="optional"
+                    className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Client Phone</label>
+                <input
+                  type="text"
+                  value={refrensClientPhone}
+                  onChange={e => setRefrensClientPhone(e.target.value)}
+                  placeholder="optional, e.g. +230 5xxxxxxx"
                   className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-400"
                 />
               </div>
