@@ -394,6 +394,16 @@ function UploadArea({ onFileSelect, error }: {
 /* ─── Sort Type ─── */
 type SortType = 'name-asc' | 'name-desc' | 'qty-desc' | 'qty-asc' | 'orders-desc' | 'orders-asc';
 
+/* ─── SKU Generator ─── */
+function makeSku(name: string): string {
+  const norm = name.trim().toLowerCase();
+  const letters = name.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4).padEnd(4, 'X');
+  let h = 5381;
+  for (const c of norm) h = ((h << 5) + h + c.charCodeAt(0)) >>> 0;
+  const hash = h.toString(36).toUpperCase().slice(-3).padStart(3, '0');
+  return `HIB${letters}${hash}`;
+}
+
 /* ─── Main App ─── */
 export default function App() {
   const [orders, setOrders] = useState<Order[]>([]);
@@ -847,6 +857,46 @@ export default function App() {
     setShowRefrensModal(false);
   }, [cumulativeBreakdown, refrensClientName, refrensInvoiceNumber, refrensInvoiceDate, refrensCurrency, refrensCountry]);
 
+  const handleExportInventoryCSV = useCallback(() => {
+    if (cumulativeBreakdown.length === 0) return;
+
+    const q = (val: string) => `"${val.replace(/"/g, '""')}"`;
+
+    const header = 'name,sku,description,currency,costPrice,sellingPrice,landedCost,gstRate,hsn,initialStock,unit,isStockManaged,preferredVendorUniqueKey,itemType,length,breadth,height,dimensionUnit,netWeight,grossWeight,weightUnit,reorderPoint,overstockPoint,category,isSalesItem';
+    const rows = cumulativeBreakdown.map((item) => {
+      const sellingPrice = (item.totalQty > 0 ? item.totalCost / item.totalQty : 0).toFixed(2);
+      return [
+        q(item.displayName),
+        q(makeSku(item.displayName)),
+        q(''),
+        q('MUR'),
+        q(''),
+        q(sellingPrice),
+        q(''), q(''), q(''), q(''),
+        q('PCS'),
+        q('false'),
+        q(''),
+        q('product'),
+        q(''), q(''), q(''), q(''),
+        q(''), q(''), q(''),
+        q(''), q(''),
+        q(''),
+        q('true'),
+      ].join(',');
+    });
+
+    const csv = header + '\r\n' + rows.join('\r\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', 'refrens_inventory.csv');
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }, [cumulativeBreakdown]);
+
   const handlePrint = () => window.print();
 
   const handleReset = () => {
@@ -1277,12 +1327,20 @@ export default function App() {
                   <h3 className="font-bold text-slate-900 flex items-center gap-2">
                     <span>📊</span> Total Menu Item Cost Breakdown & Verification
                   </h3>
-                  <button
-                    onClick={() => setShowRefrensModal(true)}
-                    className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold transition-colors"
-                  >
-                    Download Refrens Invoice CSV
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setShowRefrensModal(true)}
+                      className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold transition-colors"
+                    >
+                      Download Refrens Invoice CSV
+                    </button>
+                    <button
+                      onClick={handleExportInventoryCSV}
+                      className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold transition-colors"
+                    >
+                      Download Refrens Inventory CSV
+                    </button>
+                  </div>
                 </div>
                 <p className="text-xs text-slate-400 mb-4">
                   💡 Click on any menu item row below to expand its history, dates ordered, and verify sources.
