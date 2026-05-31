@@ -839,10 +839,10 @@ export default function App() {
     const [yyyy, mm, dd] = refrensInvoiceDate.split('-');
     const invoiceDateFormatted = `${dd}-${mm}-${yyyy}`;
 
-    let csv = 'clientName,invoiceNumber,invoiceDate,lineItem,rate,quantity,currency,country\r\n';
+    let csv = 'clientName,invoiceNumber,invoiceDate,lineItem,sku,amount,quantity,currency,clientCountry\r\n';
     for (const item of cumulativeBreakdown) {
-      const rate = item.totalQty > 0 ? item.totalCost / item.totalQty : 0;
-      csv += `${escapeField(refrensClientName)},${escapeField(refrensInvoiceNumber)},${invoiceDateFormatted},${escapeField(item.displayName)},${rate.toFixed(2)},${item.totalQty},${refrensCurrency},${refrensCountry}\r\n`;
+      const amount = item.totalQty > 0 ? item.totalCost / item.totalQty : 0;
+      csv += `${escapeField(refrensClientName)},${escapeField(refrensInvoiceNumber)},${invoiceDateFormatted},${escapeField(item.displayName)},${makeSku(item.displayName)},${amount.toFixed(2)},${item.totalQty},${refrensCurrency},${refrensCountry}\r\n`;
     }
 
     const safeInvoiceNumber = refrensInvoiceNumber.replace(/[^\w\-]/g, '_');
