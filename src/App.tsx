@@ -459,6 +459,38 @@ function makeSku(name: string): string {
 /* ─── Pagination control ─── */
 const ROWS_PER_PAGE = 8;
 
+/** Parse a date string to a sortable timestamp; null when unparseable/blank. */
+function dateSortValue(s: string | undefined | null): number | null {
+  if (!s) return null;
+  const t = Date.parse(s.trim());
+  return isNaN(t) ? null : t;
+}
+
+type SortDir = 'asc' | 'desc';
+
+/** Clickable table header that toggles/indicates sort on its column. */
+function SortableTh({ label, active, dir, onClick, align = 'left' }: {
+  label: string;
+  active: boolean;
+  dir: SortDir;
+  onClick: () => void;
+  align?: 'left' | 'right' | 'center';
+}) {
+  const justify = align === 'right' ? 'justify-end' : align === 'center' ? 'justify-center' : 'justify-start';
+  return (
+    <th className={cn('px-4 py-3 text-xs font-bold text-slate-500 uppercase', `text-${align}`)}>
+      <button
+        type="button"
+        onClick={onClick}
+        className={cn('inline-flex items-center gap-1 uppercase font-bold hover:text-indigo-600 transition-colors w-full', justify, active ? 'text-indigo-600' : 'text-slate-500')}
+      >
+        {label}
+        <span className="text-[10px]">{active ? (dir === 'asc' ? '▲' : '▼') : '↕'}</span>
+      </button>
+    </th>
+  );
+}
+
 function Pagination({ page, totalPages, onChange }: {
   page: number;
   totalPages: number;
@@ -689,8 +721,10 @@ export default function App() {
   const [breakdownMonth, setBreakdownMonth] = useState<string>('all');
   const [uploadsCollapsed, setUploadsCollapsed] = useState(false);
   const [uploadsPage, setUploadsPage] = useState(1);
+  const [uploadsSort, setUploadsSort] = useState<{ key: 'date' | 'items' | 'cost'; dir: SortDir }>({ key: 'date', dir: 'desc' });
   const [totalsCollapsed, setTotalsCollapsed] = useState(false);
   const [totalsPage, setTotalsPage] = useState(1);
+  const [totalsSort, setTotalsSort] = useState<{ key: 'date' | 'qty' | 'cost'; dir: SortDir }>({ key: 'date', dir: 'desc' });
 
   const todayIso = new Date().toISOString().slice(0, 10);
   const todayYmd = todayIso.replace(/-/g, '');
@@ -1227,19 +1261,61 @@ export default function App() {
     return { cost, qty, sources: sources.size };
   }, [filteredBreakdown]);
 
+  // Generic numeric/date comparator with unparseable dates pushed to the end.
+  const compareWith = (a: number | null, b: number | null, dir: SortDir): number => {
+    if (a === null && b === null) return 0;
+    if (a === null) return 1;   // nulls last, regardless of direction
+    if (b === null) return -1;
+    return dir === 'asc' ? a - b : b - a;
+  };
+
+  // Clicking a column: toggle direction if it's the active column, else start desc.
+  const toggleUploadsSort = (key: 'date' | 'items' | 'cost') => {
+    setUploadsSort((prev) => ({ key, dir: prev.key === key && prev.dir === 'desc' ? 'asc' : 'desc' }));
+    setUploadsPage(1);
+  };
+  const toggleTotalsSort = (key: 'date' | 'qty' | 'cost') => {
+    setTotalsSort((prev) => ({ key, dir: prev.key === key && prev.dir === 'desc' ? 'asc' : 'desc' }));
+    setTotalsPage(1);
+  };
+
+  const uploadCost = (u: SavedSummaryUpload) => u.summaries.reduce((s, x) => s + x.subtotal, 0);
+
+  const sortedUploads = useMemo(() => {
+    const arr = [...savedUploads];
+    const { key, dir } = uploadsSort;
+    arr.sort((a, b) => {
+      if (key === 'date') return compareWith(dateSortValue(a.date), dateSortValue(b.date), dir);
+      if (key === 'items') return compareWith(a.summaries.length, b.summaries.length, dir);
+      return compareWith(uploadCost(a), uploadCost(b), dir);
+    });
+    return arr;
+  }, [savedUploads, uploadsSort]);
+
+  const sortedTotals = useMemo(() => {
+    const arr = [...savedTotals];
+    const { key, dir } = totalsSort;
+    arr.sort((a, b) => {
+      if (key === 'date') return compareWith(dateSortValue(a.date), dateSortValue(b.date), dir);
+      if (key === 'qty') return compareWith(a.totalQuantity, b.totalQuantity, dir);
+      return compareWith(a.totalCost, b.totalCost, dir);
+    });
+    return arr;
+  }, [savedTotals, totalsSort]);
+
   // Pagination for the Uploaded Summaries + Saved Daily Totals lists.
-  const uploadsTotalPages = Math.max(1, Math.ceil(savedUploads.length / ROWS_PER_PAGE));
+  const uploadsTotalPages = Math.max(1, Math.ceil(sortedUploads.length / ROWS_PER_PAGE));
   const uploadsPageSafe = Math.min(uploadsPage, uploadsTotalPages);
   const pagedUploads = useMemo(
-    () => savedUploads.slice((uploadsPageSafe - 1) * ROWS_PER_PAGE, uploadsPageSafe * ROWS_PER_PAGE),
-    [savedUploads, uploadsPageSafe],
+    () => sortedUploads.slice((uploadsPageSafe - 1) * ROWS_PER_PAGE, uploadsPageSafe * ROWS_PER_PAGE),
+    [sortedUploads, uploadsPageSafe],
   );
 
-  const totalsTotalPages = Math.max(1, Math.ceil(savedTotals.length / ROWS_PER_PAGE));
+  const totalsTotalPages = Math.max(1, Math.ceil(sortedTotals.length / ROWS_PER_PAGE));
   const totalsPageSafe = Math.min(totalsPage, totalsTotalPages);
   const pagedTotals = useMemo(
-    () => savedTotals.slice((totalsPageSafe - 1) * ROWS_PER_PAGE, totalsPageSafe * ROWS_PER_PAGE),
-    [savedTotals, totalsPageSafe],
+    () => sortedTotals.slice((totalsPageSafe - 1) * ROWS_PER_PAGE, totalsPageSafe * ROWS_PER_PAGE),
+    [sortedTotals, totalsPageSafe],
   );
 
   // Filename suffix reflecting the active month filter (empty when 'all').
@@ -2011,10 +2087,10 @@ export default function App() {
                     <thead>
                       <tr className="border-b border-slate-100 bg-slate-50">
                         <th className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase">Name</th>
-                        <th className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase">Date</th>
+                        <SortableTh label="Date" active={uploadsSort.key === 'date'} dir={uploadsSort.dir} onClick={() => toggleUploadsSort('date')} />
                         <th className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase">Format</th>
-                        <th className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase">Items</th>
-                        <th className="px-4 py-3 text-right text-xs font-bold text-slate-500 uppercase">Total Cost</th>
+                        <SortableTh label="Items" active={uploadsSort.key === 'items'} dir={uploadsSort.dir} onClick={() => toggleUploadsSort('items')} />
+                        <SortableTh label="Total Cost" active={uploadsSort.key === 'cost'} dir={uploadsSort.dir} onClick={() => toggleUploadsSort('cost')} align="right" />
                         <th className="px-4 py-3 text-right text-xs font-bold text-slate-500 uppercase">Action</th>
                       </tr>
                     </thead>
@@ -2166,10 +2242,10 @@ export default function App() {
                   <table className="w-full">
                     <thead>
                       <tr className="border-b border-slate-100 bg-slate-50">
-                        <th className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase">📅 Date</th>
+                        <SortableTh label="📅 Date" active={totalsSort.key === 'date'} dir={totalsSort.dir} onClick={() => toggleTotalsSort('date')} />
                         <th className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase">📁 Batch File Name</th>
-                        <th className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase">📦 Total Quantity</th>
-                        <th className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase">💲 Total Cost</th>
+                        <SortableTh label="📦 Total Quantity" active={totalsSort.key === 'qty'} dir={totalsSort.dir} onClick={() => toggleTotalsSort('qty')} />
+                        <SortableTh label="💲 Total Cost" active={totalsSort.key === 'cost'} dir={totalsSort.dir} onClick={() => toggleTotalsSort('cost')} />
                         <th className="px-4 py-3 text-right text-xs font-bold text-slate-500 uppercase">Action</th>
                       </tr>
                     </thead>
