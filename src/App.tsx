@@ -1041,29 +1041,58 @@ export default function App() {
       subtotal: number;
     }
 
-    const map = new Map<string, { displayName: string; totalQty: number; totalCost: number; occurrences: Occurrence[] }>();
+    interface Entry {
+      displayName: string;
+      totalQty: number;
+      totalCost: number;
+      occurrences: Occurrence[];
+      variants: Set<string>;
+      matched: boolean;
+    }
+    const map = new Map<string, Entry>();
+
+    // Aggregate one stored item under its canonical menu name so variant
+    // spellings from records uploaded before name-mapping existed collapse
+    // together. Resolution is non-destructive: the stored uploads keep their
+    // original names; only this aggregated view (and the exports built from it)
+    // use the canonical name.
+    const addItem = (
+      rawName: string,
+      quantity: number,
+      subtotal: number,
+      occurrence: Occurrence,
+    ) => {
+      const original = rawName.trim();
+      const { canonical, matchType } = resolveName(original);
+      const key = canonical.toLowerCase();
+
+      const current: Entry = map.get(key) || {
+        displayName: canonical,
+        totalQty: 0,
+        totalCost: 0,
+        occurrences: [],
+        variants: new Set(),
+        matched: matchType !== 'none',
+      };
+
+      current.occurrences.push(occurrence);
+      current.totalQty += quantity;
+      current.totalCost += subtotal;
+      if (original && original.toLowerCase() !== canonical.toLowerCase()) current.variants.add(original);
+      if (matchType !== 'none') current.matched = true;
+
+      map.set(key, current);
+    };
 
     // 1. Process uploaded historical files (grouped by upload so we use the upload's date/name)
     for (const upload of savedUploads) {
+      const dateStr = upload.date || new Date().toISOString().slice(0, 10);
       for (const item of upload.summaries) {
-        const clean = item.menuItem.trim().toLowerCase();
-        const display = item.menuItem.trim();
-        const current = map.get(clean) || { displayName: display, totalQty: 0, totalCost: 0, occurrences: [] };
-
-        const dateStr = upload.date || new Date().toISOString().slice(0, 10);
-
-        current.occurrences.push({
+        addItem(item.menuItem, item.totalQuantity, item.subtotal, {
           date: dateStr,
           source: upload.name,
           quantity: item.totalQuantity,
           subtotal: item.subtotal,
-        });
-
-        map.set(clean, {
-          displayName: current.displayName,
-          totalQty: current.totalQty + item.totalQuantity,
-          totalCost: current.totalCost + item.subtotal,
-          occurrences: current.occurrences,
         });
       }
     }
@@ -1072,22 +1101,11 @@ export default function App() {
     for (const total of savedTotals) {
       if (total.items) {
         for (const item of total.items) {
-          const clean = item.menuItem.trim().toLowerCase();
-          const display = item.menuItem.trim();
-          const current = map.get(clean) || { displayName: display, totalQty: 0, totalCost: 0, occurrences: [] };
-
-          current.occurrences.push({
+          addItem(item.menuItem, item.totalQuantity, item.subtotal, {
             date: total.date,
             source: `Saved Record: ${total.batchName}`,
             quantity: item.totalQuantity,
             subtotal: item.subtotal,
-          });
-
-          map.set(clean, {
-            displayName: current.displayName,
-            totalQty: current.totalQty + item.totalQuantity,
-            totalCost: current.totalCost + item.subtotal,
-            occurrences: current.occurrences,
           });
         }
       }
@@ -1099,8 +1117,24 @@ export default function App() {
       totalQty: value.totalQty,
       totalCost: value.totalCost,
       occurrences: value.occurrences,
+      variants: value.variants.size > 0 ? Array.from(value.variants) : undefined,
+      unmatched: !value.matched,
     }));
-  }, [savedUploads, savedTotals]);
+  }, [savedUploads, savedTotals, resolveName]);
+
+  // Historical names with no menu match — fed into the review modal alongside active ones.
+  const historicalUnmatchedNames = useMemo(
+    () => (menuItems.length > 0 ? cumulativeBreakdown.filter((b) => b.unmatched).map((b) => b.displayName) : []),
+    [cumulativeBreakdown, menuItems.length],
+  );
+
+  // Combined, de-duplicated list of unmatched names (active batch + historical) for the modal.
+  const allUnmatchedNames = useMemo(() => {
+    const set = new Set<string>();
+    for (const g of unmatchedGroups) set.add(g.menuItem);
+    for (const n of historicalUnmatchedNames) set.add(n);
+    return Array.from(set);
+  }, [unmatchedGroups, historicalUnmatchedNames]);
 
   const handleExportRefrensCSV = useCallback(() => {
     if (cumulativeBreakdown.length === 0) return;
@@ -1622,6 +1656,23 @@ export default function App() {
               </div>
             </div>
 
+            {/* Unmatched historical name review prompt */}
+            {historicalUnmatchedNames.length > 0 && (
+              <div className="flex items-center justify-between gap-4 flex-wrap bg-amber-50 border border-amber-200 rounded-2xl px-5 py-4">
+                <div className="text-sm text-amber-800">
+                  ⚠️ <strong>{historicalUnmatchedNames.length}</strong> item name{historicalUnmatchedNames.length !== 1 ? 's' : ''} in your saved records don't match your menu
+                  (e.g. <em>{historicalUnmatchedNames.slice(0, 2).map((n) => `"${n}"`).join(', ')}</em>
+                  {historicalUnmatchedNames.length > 2 ? '…' : ''}). Map them to merge variant spellings in the breakdown below.
+                </div>
+                <button
+                  onClick={() => setShowAliasModal(true)}
+                  className="flex-shrink-0 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-semibold transition-colors"
+                >
+                  Review &amp; map names
+                </button>
+              </div>
+            )}
+
             {/* Total Menu Item Cost Breakdown */}
             {cumulativeBreakdown.length > 0 && (
               <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-200">
@@ -1666,22 +1717,41 @@ export default function App() {
                               onClick={() => setExpandedItem(isExpanded ? null : item.name)}
                               className="hover:bg-indigo-50/30 transition-colors cursor-pointer"
                             >
-                              <td className="px-4 py-4 text-sm font-semibold text-slate-800 flex items-center gap-2">
-                                <span className={cn(
-                                  "text-xs transition-transform inline-block",
-                                  isExpanded ? "rotate-90 text-indigo-600" : "text-slate-400"
-                                )}>
-                                  ▶
-                                </span>
-                                {item.displayName}
-                                {item.occurrences.some((occ) => occ.subtotal === 0) && (
-                                  <span
-                                    title="One or more records have a subtotal of Rs. 0 (missing price). Click to review."
-                                    className="inline-flex items-center justify-center h-5 w-5 rounded-full bg-red-100 text-red-600 text-xs font-bold"
-                                  >
-                                    !
+                              <td className="px-4 py-4 text-sm font-semibold text-slate-800">
+                                <div className="flex items-start gap-2">
+                                  <span className={cn(
+                                    "text-xs transition-transform inline-block mt-1",
+                                    isExpanded ? "rotate-90 text-indigo-600" : "text-slate-400"
+                                  )}>
+                                    ▶
                                   </span>
-                                )}
+                                  <div>
+                                    <span className="inline-flex items-center gap-2 flex-wrap">
+                                      {item.displayName}
+                                      {item.occurrences.some((occ) => occ.subtotal === 0) && (
+                                        <span
+                                          title="One or more records have a subtotal of Rs. 0 (missing price). Click to review."
+                                          className="inline-flex items-center justify-center h-5 w-5 rounded-full bg-red-100 text-red-600 text-xs font-bold"
+                                        >
+                                          !
+                                        </span>
+                                      )}
+                                      {item.unmatched && menuItems.length > 0 && (
+                                        <span
+                                          title="This name was not found in your Menu Prices file. Map it to merge variants."
+                                          className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full"
+                                        >
+                                          ⚠ Unmatched
+                                        </span>
+                                      )}
+                                    </span>
+                                    {item.variants && item.variants.length > 0 && (
+                                      <span className="block text-[11px] font-normal text-slate-400 mt-0.5">
+                                        Includes: {item.variants.map((v) => `"${v}"`).join(', ')}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
                               </td>
                               <td className="px-4 py-4 text-sm text-slate-500">
                                 <span className="bg-slate-100 text-slate-700 px-2.5 py-1 rounded-full text-xs font-medium">
@@ -2060,7 +2130,7 @@ export default function App() {
 
       {showAliasModal && (
         <AliasModal
-          unmatchedNames={unmatchedGroups.map((g) => g.menuItem)}
+          unmatchedNames={allUnmatchedNames}
           menuNames={menuNames}
           aliasMap={aliasMap}
           onAssign={handleAssignAlias}
