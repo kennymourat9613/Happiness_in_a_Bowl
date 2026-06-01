@@ -456,6 +456,38 @@ function makeSku(name: string): string {
   return `HIB${letters}${hash}`;
 }
 
+/* ─── Pagination control ─── */
+const ROWS_PER_PAGE = 8;
+
+function Pagination({ page, totalPages, onChange }: {
+  page: number;
+  totalPages: number;
+  onChange: (next: number) => void;
+}) {
+  if (totalPages <= 1) return null;
+  return (
+    <div className="flex items-center justify-between gap-3 pt-4 mt-2 border-t border-slate-100">
+      <button
+        type="button"
+        disabled={page <= 1}
+        onClick={() => onChange(page - 1)}
+        className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+      >
+        ← Prev
+      </button>
+      <span className="text-xs text-slate-500">Page <strong>{page}</strong> of {totalPages}</span>
+      <button
+        type="button"
+        disabled={page >= totalPages}
+        onClick={() => onChange(page + 1)}
+        className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+      >
+        Next →
+      </button>
+    </div>
+  );
+}
+
 /* ─── Single unmatched-name review row ─── */
 function AliasReviewRow({
   name,
@@ -655,6 +687,10 @@ export default function App() {
   const [occSortAsc, setOccSortAsc] = useState(false);
   const [expandedUpload, setExpandedUpload] = useState<string | null>(null);
   const [breakdownMonth, setBreakdownMonth] = useState<string>('all');
+  const [uploadsCollapsed, setUploadsCollapsed] = useState(false);
+  const [uploadsPage, setUploadsPage] = useState(1);
+  const [totalsCollapsed, setTotalsCollapsed] = useState(false);
+  const [totalsPage, setTotalsPage] = useState(1);
 
   const todayIso = new Date().toISOString().slice(0, 10);
   const todayYmd = todayIso.replace(/-/g, '');
@@ -1190,6 +1226,21 @@ export default function App() {
     }
     return { cost, qty, sources: sources.size };
   }, [filteredBreakdown]);
+
+  // Pagination for the Uploaded Summaries + Saved Daily Totals lists.
+  const uploadsTotalPages = Math.max(1, Math.ceil(savedUploads.length / ROWS_PER_PAGE));
+  const uploadsPageSafe = Math.min(uploadsPage, uploadsTotalPages);
+  const pagedUploads = useMemo(
+    () => savedUploads.slice((uploadsPageSafe - 1) * ROWS_PER_PAGE, uploadsPageSafe * ROWS_PER_PAGE),
+    [savedUploads, uploadsPageSafe],
+  );
+
+  const totalsTotalPages = Math.max(1, Math.ceil(savedTotals.length / ROWS_PER_PAGE));
+  const totalsPageSafe = Math.min(totalsPage, totalsTotalPages);
+  const pagedTotals = useMemo(
+    () => savedTotals.slice((totalsPageSafe - 1) * ROWS_PER_PAGE, totalsPageSafe * ROWS_PER_PAGE),
+    [savedTotals, totalsPageSafe],
+  );
 
   // Filename suffix reflecting the active month filter (empty when 'all').
   const exportMonthSuffix = breakdownMonth === 'all' ? '' : `_${breakdownMonth}`;
@@ -1930,8 +1981,23 @@ export default function App() {
             {/* Uploaded Summaries list */}
             {savedUploads.length > 0 && (
               <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-200">
-                <div className="flex items-center justify-between border-b border-slate-100 pb-4 mb-4">
-                  <h3 className="font-bold text-slate-900">Uploaded Summary Files</h3>
+                <div className={cn("flex items-center justify-between", !uploadsCollapsed && "border-b border-slate-100 pb-4 mb-4")}>
+                  <button
+                    type="button"
+                    onClick={() => setUploadsCollapsed((v) => !v)}
+                    className="flex items-center gap-2 text-left group"
+                  >
+                    <span className={cn(
+                      "text-sm transition-transform text-slate-400 group-hover:text-slate-600",
+                      uploadsCollapsed ? "" : "rotate-90"
+                    )}>
+                      ▶
+                    </span>
+                    <h3 className="font-bold text-slate-900">Uploaded Summary Files</h3>
+                    <span className="text-xs font-medium text-slate-400 bg-slate-100 rounded-full px-2 py-0.5">
+                      {savedUploads.length}
+                    </span>
+                  </button>
                   <button
                     onClick={handleResetHistorical}
                     className="text-xs font-semibold text-red-600 hover:text-red-800"
@@ -1939,6 +2005,7 @@ export default function App() {
                     Clear All
                   </button>
                 </div>
+                {!uploadsCollapsed && (
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead>
@@ -1952,7 +2019,7 @@ export default function App() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {savedUploads.map((upload) => {
+                      {pagedUploads.map((upload) => {
                         const isUploadExpanded = expandedUpload === upload.id;
                         return (
                         <Fragment key={upload.id}>
@@ -2060,18 +2127,41 @@ export default function App() {
                       })}
                     </tbody>
                   </table>
+                  <Pagination page={uploadsPageSafe} totalPages={uploadsTotalPages} onChange={setUploadsPage} />
                 </div>
+                )}
               </div>
             )}
 
             {/* Saved Daily Totals list */}
             <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-200">
-              <h3 className="font-bold text-slate-900 border-b border-slate-100 pb-4 mb-4">Saved Daily Totals</h3>
+              <div className={cn("flex items-center justify-between", savedTotals.length > 0 && !totalsCollapsed && "border-b border-slate-100 pb-4 mb-4")}>
+                <button
+                  type="button"
+                  onClick={() => savedTotals.length > 0 && setTotalsCollapsed((v) => !v)}
+                  className={cn("flex items-center gap-2 text-left group", savedTotals.length === 0 && "cursor-default")}
+                >
+                  {savedTotals.length > 0 && (
+                    <span className={cn(
+                      "text-sm transition-transform text-slate-400 group-hover:text-slate-600",
+                      totalsCollapsed ? "" : "rotate-90"
+                    )}>
+                      ▶
+                    </span>
+                  )}
+                  <h3 className="font-bold text-slate-900">Saved Daily Totals</h3>
+                  {savedTotals.length > 0 && (
+                    <span className="text-xs font-medium text-slate-400 bg-slate-100 rounded-full px-2 py-0.5">
+                      {savedTotals.length}
+                    </span>
+                  )}
+                </button>
+              </div>
               {savedTotals.length === 0 ? (
                 <div className="text-center py-8 text-slate-400 text-sm">
                   No saved daily totals yet. Go to "Active Batch Processor", load orders, and click "Save Daily Total".
                 </div>
-              ) : (
+              ) : totalsCollapsed ? null : (
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead>
@@ -2084,7 +2174,7 @@ export default function App() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {savedTotals.map((item) => (
+                      {pagedTotals.map((item) => (
                         <tr key={item.id} className="hover:bg-slate-50/50">
                           <td className="px-4 py-3 text-sm font-semibold text-slate-700">{item.date}</td>
                           <td className="px-4 py-3 text-sm text-slate-500 font-mono">{item.batchName}</td>
@@ -2102,6 +2192,7 @@ export default function App() {
                       ))}
                     </tbody>
                   </table>
+                  <Pagination page={totalsPageSafe} totalPages={totalsTotalPages} onChange={setTotalsPage} />
                 </div>
               )}
             </div>
