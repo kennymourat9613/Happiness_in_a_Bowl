@@ -1,10 +1,12 @@
 export interface ComparedOrder {
   clientName: string;
-  product: string;
+  product: string;            // original name as it appears in the file
   quantity: number;
   date: string;
   note: string;
   status?: string; // only populated for vendor orders with a non-accepted status
+  /** Canonical menu name used for matching (falls back to `product` when unset). */
+  canonicalProduct?: string;
 }
 
 export interface ComparisonResult {
@@ -15,7 +17,7 @@ export interface ComparisonResult {
 }
 
 const makeKey = (o: ComparedOrder) =>
-  `${o.clientName.trim().toLowerCase()}|${o.product.trim().toLowerCase()}|${o.quantity}`;
+  `${o.clientName.trim().toLowerCase()}|${(o.canonicalProduct ?? o.product).trim().toLowerCase()}|${o.quantity}`;
 
 export function compareOrders(
   daily: ComparedOrder[],

@@ -2,6 +2,13 @@ import { useState, useCallback, useMemo, useRef, useEffect, Fragment } from 'rea
 import { Order, GroupedOrder, MenuItemInfo, SavedDailyTotal, HistoricalDailySummary, SavedSummaryUpload } from './types';
 import { parseOrders, parseMenuItems, parseHistoricalDaily, parseVendorOrdersAsSummary } from './utils/csvParser';
 import { cn } from './utils/cn';
+import {
+  AliasMap,
+  resolveCanonical,
+  suggestCanonical,
+  addAlias,
+  removeAlias,
+} from './utils/menuMatching';
 import * as XLSX from 'xlsx';
 import OrderChecker from './components/OrderChecker';
 import { supabase } from './lib/supabase';
@@ -109,19 +116,48 @@ function NoteIcon() {
 }
 
 /* ─── Utility ─── */
-function groupOrdersByMenuItem(orders: Order[]): GroupedOrder[] {
-  const map = new Map<string, Order[]>();
+/**
+ * Group orders by menu item. A `resolver` maps each raw client-supplied name to
+ * a canonical menu name (exact match / confirmed alias) so variant spellings of
+ * the same dish collapse into one group. When no menu is loaded the resolver is
+ * an identity pass-through, preserving the original grouping behaviour.
+ */
+function groupOrdersByMenuItem(
+  orders: Order[],
+  resolve: (name: string) => { canonical: string; matchType: 'exact' | 'alias' | 'none' } = (name) => ({
+    canonical: name.trim(),
+    matchType: 'none',
+  }),
+): GroupedOrder[] {
+  interface Bucket {
+    canonical: string;
+    orders: Order[];
+    variants: Set<string>;
+    matched: boolean;
+  }
+  const map = new Map<string, Bucket>();
+
   for (const order of orders) {
-    const key = order.menuItem.trim().toLowerCase();
-    const displayKey = order.menuItem.trim();
-    if (!map.has(key)) map.set(key, []);
-    map.get(key)!.push({ ...order, menuItem: displayKey });
+    const original = order.menuItem.trim();
+    const { canonical, matchType } = resolve(original);
+    const key = canonical.toLowerCase();
+
+    if (!map.has(key)) {
+      map.set(key, { canonical, orders: [], variants: new Set(), matched: matchType !== 'none' });
+    }
+    const bucket = map.get(key)!;
+    // Store the order under its canonical name; keep the original for display.
+    bucket.orders.push({ ...order, menuItem: canonical, originalMenuItem: original });
+    if (original && original.toLowerCase() !== canonical.toLowerCase()) bucket.variants.add(original);
+    if (matchType !== 'none') bucket.matched = true;
   }
 
-  return Array.from(map.entries()).map(([, orders]) => ({
-    menuItem: orders[0].menuItem,
-    totalQuantity: orders.reduce((sum, o) => sum + o.quantity, 0),
-    orders,
+  return Array.from(map.values()).map((bucket) => ({
+    menuItem: bucket.canonical,
+    totalQuantity: bucket.orders.reduce((sum, o) => sum + o.quantity, 0),
+    orders: bucket.orders,
+    variants: bucket.variants.size > 0 ? Array.from(bucket.variants) : undefined,
+    unmatched: !bucket.matched,
   }));
 }
 
@@ -204,7 +240,17 @@ function OrderGroupCard({ group, menuItemInfo }: { group: GroupedOrder; menuItem
             <span className="text-white text-lg">🍽️</span>
           </div>
           <div>
-            <h3 className="text-lg font-bold text-slate-900">{group.menuItem}</h3>
+            <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+              {group.menuItem}
+              {group.unmatched && (
+                <span
+                  title="This name was not found in your Menu Prices file. Map it to a menu item to enable pricing and merging."
+                  className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full"
+                >
+                  ⚠ Unmatched
+                </span>
+              )}
+            </h3>
             <p className="text-xs text-slate-500">
               {group.orders.length} order{group.orders.length !== 1 ? 's' : ''}
               {hasNotes && (
@@ -213,6 +259,11 @@ function OrderGroupCard({ group, menuItemInfo }: { group: GroupedOrder; menuItem
                 </span>
               )}
             </p>
+            {group.variants && group.variants.length > 0 && (
+              <p className="text-[11px] text-slate-400 mt-0.5">
+                Client wrote: {group.variants.map((v) => `"${v}"`).join(', ')}
+              </p>
+            )}
             {menuItemInfo && menuItemInfo.description && (
               <p className="text-xs text-slate-400 italic mt-1 line-clamp-1 max-w-md">
                 "{menuItemInfo.description}"
@@ -404,10 +455,188 @@ function makeSku(name: string): string {
   return `HIB${letters}${hash}`;
 }
 
+/* ─── Single unmatched-name review row ─── */
+function AliasReviewRow({
+  name,
+  menuNames,
+  onAssign,
+}: {
+  name: string;
+  menuNames: string[];
+  onAssign: (variant: string, canonical: string) => void;
+}) {
+  const suggestions = useMemo(() => suggestCanonical(name, menuNames, 3), [name, menuNames]);
+  const [selected, setSelected] = useState('');
+
+  return (
+    <div className="border border-slate-200 rounded-2xl p-4">
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <p className="text-xs text-slate-400 font-medium uppercase tracking-wide">Client wrote</p>
+          <p className="text-sm font-semibold text-slate-800">"{name}"</p>
+        </div>
+      </div>
+
+      {suggestions.length > 0 && (
+        <div className="mt-3">
+          <p className="text-xs text-slate-500 mb-1.5">Did you mean:</p>
+          <div className="flex flex-wrap gap-2">
+            {suggestions.map((s) => (
+              <button
+                key={s.name}
+                onClick={() => onAssign(name, s.name)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-800 rounded-xl text-xs font-semibold transition-colors"
+              >
+                {s.name}
+                <span className="text-[10px] text-emerald-500">{Math.round(s.score * 100)}%</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="mt-3 flex items-center gap-2">
+        <select
+          value={selected}
+          onChange={(e) => setSelected(e.target.value)}
+          className="flex-1 border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300"
+        >
+          <option value="">
+            {suggestions.length > 0 ? 'Or pick another menu item…' : 'Pick a menu item…'}
+          </option>
+          {menuNames.map((m) => (
+            <option key={m} value={m}>{m}</option>
+          ))}
+        </select>
+        <button
+          onClick={() => selected && onAssign(name, selected)}
+          disabled={!selected}
+          className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl text-xs font-semibold transition-colors"
+        >
+          Map
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Alias review & management modal ─── */
+function AliasModal({
+  unmatchedNames,
+  menuNames,
+  aliasMap,
+  onAssign,
+  onRemove,
+  onClose,
+}: {
+  unmatchedNames: string[];
+  menuNames: string[];
+  aliasMap: AliasMap;
+  onAssign: (variant: string, canonical: string) => void;
+  onRemove: (variant: string) => void;
+  onClose: () => void;
+}) {
+  const aliasEntries = Object.entries(aliasMap);
+
+  return (
+    <div className="no-print fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+      <div className="bg-white rounded-3xl max-w-2xl w-full max-h-[85vh] overflow-y-auto shadow-2xl flex flex-col">
+        <div className="flex items-center justify-between p-6 border-b border-slate-100 sticky top-0 bg-white">
+          <div>
+            <h3 className="text-xl font-bold text-slate-900">Map menu item names</h3>
+            <p className="text-xs text-slate-500">
+              Match client-supplied names to your menu. Confirmed mappings are saved and reused automatically.
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="h-10 w-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-600 hover:bg-slate-200 transition-colors"
+          >
+            <XIcon />
+          </button>
+        </div>
+
+        <div className="p-6 space-y-6">
+          {menuNames.length === 0 ? (
+            <div className="text-sm text-slate-500 bg-amber-50 border border-amber-200 rounded-2xl p-4">
+              Upload a <strong>Menu Prices</strong> file first — the canonical menu names come from it.
+            </div>
+          ) : (
+            <>
+              <div>
+                <h4 className="text-sm font-bold text-slate-800 mb-3">
+                  Needs review ({unmatchedNames.length})
+                </h4>
+                {unmatchedNames.length === 0 ? (
+                  <div className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-2xl p-4">
+                    ✓ All current order names match your menu.
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {unmatchedNames.map((name) => (
+                      <AliasReviewRow key={name} name={name} menuNames={menuNames} onAssign={onAssign} />
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {aliasEntries.length > 0 && (
+                <div>
+                  <h4 className="text-sm font-bold text-slate-800 mb-3">
+                    Saved mappings ({aliasEntries.length})
+                  </h4>
+                  <div className="overflow-hidden rounded-2xl border border-slate-200">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="bg-slate-50 border-b border-slate-200 text-xs font-semibold text-slate-500 uppercase">
+                          <th className="px-4 py-2.5 text-left">Client name (normalized)</th>
+                          <th className="px-4 py-2.5 text-left">Maps to</th>
+                          <th className="px-4 py-2.5 text-right">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {aliasEntries.map(([variant, canonical]) => (
+                          <tr key={variant} className="hover:bg-slate-50/50">
+                            <td className="px-4 py-2.5 text-slate-600 font-mono text-xs">{variant}</td>
+                            <td className="px-4 py-2.5 text-slate-800 font-medium">{canonical}</td>
+                            <td className="px-4 py-2.5 text-right">
+                              <button
+                                onClick={() => onRemove(variant)}
+                                className="text-xs font-semibold text-red-500 hover:text-red-700"
+                              >
+                                Remove
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
+        <div className="p-6 border-t border-slate-100 flex justify-end sticky bottom-0 bg-white">
+          <button
+            onClick={onClose}
+            className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-semibold transition-colors"
+          >
+            Done
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ─── Main App ─── */
 export default function App() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [menuItems, setMenuItems] = useState<MenuItemInfo[]>([]);
+  const [aliasMap, setAliasMap] = useState<AliasMap>({});
+  const [showAliasModal, setShowAliasModal] = useState(false);
   const [savedTotals, setSavedTotals] = useState<SavedDailyTotal[]>([]);
   const [savedUploads, setSavedUploads] = useState<SavedSummaryUpload[]>([]);
   
@@ -473,6 +702,13 @@ export default function App() {
         }
       } catch (e) {
         console.error('Failed to load menu from storage', e);
+      }
+
+      try {
+        const savedAliases = await getItem('catering_menu_aliases');
+        if (savedAliases) setAliasMap(savedAliases as AliasMap);
+      } catch (e) {
+        console.error('Failed to load menu name aliases', e);
       }
 
       // Recover active orders if they refreshed/scrolled on their tablet accidentally
@@ -637,7 +873,42 @@ export default function App() {
     return Math.max(0, 90 - daysUsed);
   }, [menuUploadTimestamp]);
 
-  const grouped = useMemo(() => groupOrdersByMenuItem(orders), [orders]);
+  // Canonical menu names from the loaded Menu Prices file.
+  const menuNames = useMemo(() => menuItems.map((m) => m.foodItem), [menuItems]);
+
+  // Resolve a raw client-supplied name -> canonical menu name (exact / alias / none).
+  const resolveName = useCallback(
+    (name: string) => resolveCanonical(name, menuNames, aliasMap),
+    [menuNames, aliasMap],
+  );
+
+  const grouped = useMemo(
+    () => groupOrdersByMenuItem(orders, resolveName),
+    [orders, resolveName],
+  );
+
+  // Groups whose names don't match the loaded menu (only meaningful once a menu is loaded).
+  const unmatchedGroups = useMemo(
+    () => (menuItems.length > 0 ? grouped.filter((g) => g.unmatched) : []),
+    [grouped, menuItems.length],
+  );
+
+  // Persist + apply a confirmed variant -> canonical mapping.
+  const handleAssignAlias = useCallback((variant: string, canonical: string) => {
+    setAliasMap((prev) => {
+      const next = addAlias(prev, variant, canonical);
+      void setItem('catering_menu_aliases', next);
+      return next;
+    });
+  }, []);
+
+  const handleRemoveAlias = useCallback((variant: string) => {
+    setAliasMap((prev) => {
+      const next = removeAlias(prev, variant);
+      void setItem('catering_menu_aliases', next);
+      return next;
+    });
+  }, []);
 
   const filtered = useMemo(() => {
     let result = grouped;
@@ -1110,6 +1381,34 @@ export default function App() {
               {menuError && (
                 <div className="no-print p-4 bg-red-50 border border-red-200 rounded-2xl text-sm text-red-600">
                   ⚠️ <strong>Menu Error:</strong> {menuError}
+                </div>
+              )}
+
+              {/* Unmatched item-name review prompt */}
+              {menuItems.length > 0 && (
+                <div className="no-print flex items-center justify-between gap-4 flex-wrap">
+                  {unmatchedGroups.length > 0 ? (
+                    <div className="flex items-center justify-between gap-4 flex-wrap w-full bg-amber-50 border border-amber-200 rounded-2xl px-5 py-4">
+                      <div className="text-sm text-amber-800">
+                        ⚠️ <strong>{unmatchedGroups.length}</strong> item name{unmatchedGroups.length !== 1 ? 's' : ''} don't match your menu
+                        (e.g. <em>{unmatchedGroups.slice(0, 2).map((g) => `"${g.menuItem}"`).join(', ')}</em>
+                        {unmatchedGroups.length > 2 ? '…' : ''}). Map them so pricing and totals are correct.
+                      </div>
+                      <button
+                        onClick={() => setShowAliasModal(true)}
+                        className="flex-shrink-0 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-semibold transition-colors"
+                      >
+                        Review &amp; map names
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setShowAliasModal(true)}
+                      className="text-xs font-semibold text-slate-500 hover:text-indigo-600 underline"
+                    >
+                      Manage menu name mappings
+                    </button>
+                  )}
                 </div>
               )}
 
@@ -1757,6 +2056,17 @@ export default function App() {
             </div>
           </div>
         </div>
+      )}
+
+      {showAliasModal && (
+        <AliasModal
+          unmatchedNames={unmatchedGroups.map((g) => g.menuItem)}
+          menuNames={menuNames}
+          aliasMap={aliasMap}
+          onAssign={handleAssignAlias}
+          onRemove={handleRemoveAlias}
+          onClose={() => setShowAliasModal(false)}
+        />
       )}
 
       {showRefrensModal && (

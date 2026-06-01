@@ -6,12 +6,18 @@ export interface Order {
   quantity: number;
   productVendor: string;
   orderNote: string;
+  /** Original client-supplied name before canonicalization (when it differed). */
+  originalMenuItem?: string;
 }
 
 export interface GroupedOrder {
-  menuItem: string;
+  menuItem: string;            // canonical menu name (or original if unmatched)
   totalQuantity: number;
   orders: Order[];
+  /** Distinct original client-supplied names that mapped into this group (when they differ from the canonical name). */
+  variants?: string[];
+  /** True when this name could not be matched to the loaded menu (needs review). */
+  unmatched?: boolean;
 }
 
 export interface MenuItemInfo {

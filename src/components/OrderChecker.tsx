@@ -1,7 +1,10 @@
-import { useState, useMemo, useRef } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import * as XLSX from 'xlsx';
 import { cn } from '../utils/cn';
 import { compareOrders, ComparedOrder, ComparisonResult } from '../utils/orderComparison';
+import { AliasMap, resolveCanonical } from '../utils/menuMatching';
+import { MenuItemInfo } from '../types';
+import { getItem } from '../lib/storage';
 
 /* ─── XLSX Parsers ─── */
 
@@ -266,6 +269,34 @@ export default function OrderChecker() {
   const [vendorName,        setVendorName]         = useState<string | null>(null);
   const [filter, setFilter]                        = useState<FilterTab>('all');
   const [search, setSearch]                        = useState('');
+  const [menuNames,        setMenuNames]           = useState<string[]>([]);
+  const [aliasMap,         setAliasMap]            = useState<AliasMap>({});
+
+  // Load canonical menu names + confirmed aliases so the comparison can treat
+  // variant spellings of the same dish as a match (same engine as the Active Batch tab).
+  useEffect(() => {
+    void (async () => {
+      try {
+        const menu = await getItem('catering_menu_items');
+        if (menu) setMenuNames((menu as MenuItemInfo[]).map((m) => m.foodItem));
+      } catch (e) {
+        console.error('OrderChecker: failed to load menu items', e);
+      }
+      try {
+        const aliases = await getItem('catering_menu_aliases');
+        if (aliases) setAliasMap(aliases as AliasMap);
+      } catch (e) {
+        console.error('OrderChecker: failed to load aliases', e);
+      }
+    })();
+  }, []);
+
+  // Tag each order with its canonical menu name (used only for matching; the
+  // original product text is still displayed).
+  const canonicalize = (o: ComparedOrder): ComparedOrder => ({
+    ...o,
+    canonicalProduct: resolveCanonical(o.product, menuNames, aliasMap).canonical,
+  });
 
   const handleDailyFile  = (buf: ArrayBuffer, name: string) => {
     setDailyOrders(parseDailyXlsx(buf));
@@ -280,8 +311,13 @@ export default function OrderChecker() {
 
   const result = useMemo<ComparisonResult | null>(() => {
     if (!dailyOrders || !vendorAccepted || !vendorNonAccepted) return null;
-    return compareOrders(dailyOrders, vendorAccepted, vendorNonAccepted);
-  }, [dailyOrders, vendorAccepted, vendorNonAccepted]);
+    return compareOrders(
+      dailyOrders.map(canonicalize),
+      vendorAccepted.map(canonicalize),
+      vendorNonAccepted.map(canonicalize),
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dailyOrders, vendorAccepted, vendorNonAccepted, menuNames, aliasMap]);
 
   const allRows = useMemo(() => (result ? buildFlatRows(result) : []), [result]);
 
