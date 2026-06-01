@@ -9,6 +9,7 @@ import {
   addAlias,
   removeAlias,
 } from './utils/menuMatching';
+import { monthKey, monthLabel, sortMonthKeys, UNDATED_KEY } from './utils/dateUtils';
 import * as XLSX from 'xlsx';
 import OrderChecker from './components/OrderChecker';
 import { supabase } from './lib/supabase';
@@ -653,6 +654,7 @@ export default function App() {
   const [expandedItem, setExpandedItem] = useState<string | null>(null);
   const [occSortAsc, setOccSortAsc] = useState(false);
   const [expandedUpload, setExpandedUpload] = useState<string | null>(null);
+  const [breakdownMonth, setBreakdownMonth] = useState<string>('all');
 
   const todayIso = new Date().toISOString().slice(0, 10);
   const todayYmd = todayIso.replace(/-/g, '');
@@ -1136,8 +1138,49 @@ export default function App() {
     return Array.from(set);
   }, [unmatchedGroups, historicalUnmatchedNames]);
 
+  // Distinct months present across all breakdown occurrences (newest first, "Undated" last).
+  const availableMonths = useMemo(() => {
+    const set = new Set<string>();
+    for (const item of cumulativeBreakdown) {
+      for (const occ of item.occurrences) {
+        set.add(monthKey(occ.date) ?? UNDATED_KEY);
+      }
+    }
+    return sortMonthKeys(Array.from(set));
+  }, [cumulativeBreakdown]);
+
+  // Reset the month filter if the selected month is no longer present.
+  useEffect(() => {
+    if (breakdownMonth !== 'all' && !availableMonths.includes(breakdownMonth)) {
+      setBreakdownMonth('all');
+    }
+  }, [availableMonths, breakdownMonth]);
+
+  // Breakdown scoped to the selected month: keep only matching occurrences and
+  // recompute each item's totals from them (so a month view reflects only that
+  // month's quantities/costs). 'all' passes through unchanged.
+  const filteredBreakdown = useMemo(() => {
+    if (breakdownMonth === 'all') return cumulativeBreakdown;
+    return cumulativeBreakdown
+      .map((item) => {
+        const occurrences = item.occurrences.filter(
+          (occ) => (monthKey(occ.date) ?? UNDATED_KEY) === breakdownMonth,
+        );
+        return {
+          ...item,
+          occurrences,
+          totalQty: occurrences.reduce((s, o) => s + o.quantity, 0),
+          totalCost: occurrences.reduce((s, o) => s + o.subtotal, 0),
+        };
+      })
+      .filter((item) => item.occurrences.length > 0);
+  }, [cumulativeBreakdown, breakdownMonth]);
+
+  // Filename suffix reflecting the active month filter (empty when 'all').
+  const exportMonthSuffix = breakdownMonth === 'all' ? '' : `_${breakdownMonth}`;
+
   const handleExportRefrensCSV = useCallback(() => {
-    if (cumulativeBreakdown.length === 0) return;
+    if (filteredBreakdown.length === 0) return;
 
     const escapeField = (val: string) => {
       if (/[",\n\r]/.test(val)) return `"${val.replace(/"/g, '""')}"`;
@@ -1148,7 +1191,7 @@ export default function App() {
     const invoiceDateFormatted = `${dd}-${mm}-${yyyy}`;
 
     let csv = 'clientName,clientEmail,clientVatNumber,clientPhone,invoiceNumber,invoiceDate,lineItem,sku,amount,quantity,currency,clientCountry\r\n';
-    for (const item of cumulativeBreakdown) {
+    for (const item of filteredBreakdown) {
       const amount = item.totalQty > 0 ? item.totalCost / item.totalQty : 0;
       csv += `${escapeField(refrensClientName)},${escapeField(refrensClientEmail)},${escapeField(refrensClientVat)},${escapeField(refrensClientPhone)},${escapeField(refrensInvoiceNumber)},${invoiceDateFormatted},${escapeField(item.displayName)},${makeSku(item.displayName)},${amount.toFixed(2)},${item.totalQty},${refrensCurrency},${refrensCountry}\r\n`;
     }
@@ -1158,20 +1201,20 @@ export default function App() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.setAttribute('download', `refrens_invoice_${safeInvoiceNumber}.csv`);
+    link.setAttribute('download', `refrens_invoice_${safeInvoiceNumber}${exportMonthSuffix}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     setShowRefrensModal(false);
-  }, [cumulativeBreakdown, refrensClientName, refrensClientEmail, refrensClientVat, refrensClientPhone, refrensInvoiceNumber, refrensInvoiceDate, refrensCurrency, refrensCountry]);
+  }, [filteredBreakdown, exportMonthSuffix, refrensClientName, refrensClientEmail, refrensClientVat, refrensClientPhone, refrensInvoiceNumber, refrensInvoiceDate, refrensCurrency, refrensCountry]);
 
   const handleExportInventoryCSV = useCallback(() => {
-    if (cumulativeBreakdown.length === 0) return;
+    if (filteredBreakdown.length === 0) return;
 
     const q = (val: string) => `"${val.replace(/"/g, '""')}"`;
 
     const header = 'name,sku,description,currency,costPrice,sellingPrice,landedCost,gstRate,hsn,initialStock,unit,isStockManaged,preferredVendorUniqueKey,itemType,length,breadth,height,dimensionUnit,netWeight,grossWeight,weightUnit,reorderPoint,overstockPoint,category,isSalesItem';
-    const rows = cumulativeBreakdown.map((item) => {
+    const rows = filteredBreakdown.map((item) => {
       const sellingPrice = (item.totalQty > 0 ? item.totalCost / item.totalQty : 0).toFixed(2);
       return [
         q(item.displayName),
@@ -1198,12 +1241,12 @@ export default function App() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.setAttribute('download', 'refrens_inventory.csv');
+    link.setAttribute('download', `refrens_inventory${exportMonthSuffix}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
-  }, [cumulativeBreakdown]);
+  }, [filteredBreakdown, exportMonthSuffix]);
 
   const handlePrint = () => window.print();
 
@@ -1680,7 +1723,20 @@ export default function App() {
                   <h3 className="font-bold text-slate-900 flex items-center gap-2">
                     <span>📊</span> Total Menu Item Cost Breakdown & Verification
                   </h3>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {availableMonths.length > 0 && (
+                      <select
+                        value={breakdownMonth}
+                        onChange={(e) => setBreakdownMonth(e.target.value)}
+                        title="Filter the breakdown by month"
+                        className="px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-300 cursor-pointer"
+                      >
+                        <option value="all">📅 All months</option>
+                        {availableMonths.map((key) => (
+                          <option key={key} value={key}>{monthLabel(key)}</option>
+                        ))}
+                      </select>
+                    )}
                     <button
                       onClick={() => setShowRefrensModal(true)}
                       className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold transition-colors"
@@ -1697,6 +1753,11 @@ export default function App() {
                 </div>
                 <p className="text-xs text-slate-400 mb-4">
                   💡 Click on any menu item row below to expand its history, dates ordered, and verify sources.
+                  {breakdownMonth !== 'all' && (
+                    <span className="ml-1 font-semibold text-indigo-600">
+                      Showing {monthLabel(breakdownMonth)} only — exports cover this month.
+                    </span>
+                  )}
                 </p>
                 <div className="overflow-x-auto">
                   <table className="w-full">
@@ -1709,7 +1770,13 @@ export default function App() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {cumulativeBreakdown.map((item, idx) => {
+                      {filteredBreakdown.length === 0 ? (
+                        <tr>
+                          <td colSpan={4} className="px-4 py-8 text-center text-sm text-slate-400">
+                            No records for {monthLabel(breakdownMonth)}.
+                          </td>
+                        </tr>
+                      ) : filteredBreakdown.map((item, idx) => {
                         const isExpanded = expandedItem === item.name;
                         return (
                           <Fragment key={idx}>
@@ -1805,18 +1872,23 @@ export default function App() {
                         );
                       })}
                       {/* Total Row */}
-                      <tr className="bg-indigo-50/50 font-bold border-t-2 border-indigo-100">
-                        <td className="px-4 py-4 text-sm text-indigo-950 font-extrabold flex items-center gap-2">
-                          <span>📊</span> Total Summary
-                        </td>
-                        <td className="px-4 py-4 text-sm text-indigo-900 font-extrabold">
-                          {cumulativeBreakdown.reduce((sum, item) => sum + item.totalQty, 0)} units
-                        </td>
-                        <td className="px-4 py-4"></td>
-                        <td className="px-4 py-4 text-sm text-indigo-600 text-right font-extrabold">
-                          Rs. {cumulativeBreakdown.reduce((sum, item) => sum + item.totalCost, 0).toFixed(2)}
-                        </td>
-                      </tr>
+                      {filteredBreakdown.length > 0 && (
+                        <tr className="bg-indigo-50/50 font-bold border-t-2 border-indigo-100">
+                          <td className="px-4 py-4 text-sm text-indigo-950 font-extrabold flex items-center gap-2">
+                            <span>📊</span> Total Summary
+                            {breakdownMonth !== 'all' && (
+                              <span className="text-xs font-semibold text-indigo-500">({monthLabel(breakdownMonth)})</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-4 text-sm text-indigo-900 font-extrabold">
+                            {filteredBreakdown.reduce((sum, item) => sum + item.totalQty, 0)} units
+                          </td>
+                          <td className="px-4 py-4"></td>
+                          <td className="px-4 py-4 text-sm text-indigo-600 text-right font-extrabold">
+                            Rs. {filteredBreakdown.reduce((sum, item) => sum + item.totalCost, 0).toFixed(2)}
+                          </td>
+                        </tr>
+                      )}
                     </tbody>
                   </table>
                 </div>
