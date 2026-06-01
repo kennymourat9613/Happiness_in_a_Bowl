@@ -1176,6 +1176,21 @@ export default function App() {
       .filter((item) => item.occurrences.length > 0);
   }, [cumulativeBreakdown, breakdownMonth]);
 
+  const isMonthView = breakdownMonth !== 'all';
+
+  // Headline stats for the selected month, derived from the filtered breakdown.
+  const monthStats = useMemo(() => {
+    let cost = 0;
+    let qty = 0;
+    const sources = new Set<string>();
+    for (const item of filteredBreakdown) {
+      cost += item.totalCost;
+      qty += item.totalQty;
+      for (const occ of item.occurrences) sources.add(occ.source);
+    }
+    return { cost, qty, sources: sources.size };
+  }, [filteredBreakdown]);
+
   // Filename suffix reflecting the active month filter (empty when 'all').
   const exportMonthSuffix = breakdownMonth === 'all' ? '' : `_${breakdownMonth}`;
 
@@ -1673,28 +1688,45 @@ export default function App() {
             {/* Calculations Banner */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div className="bg-gradient-to-br from-indigo-500 to-indigo-600 text-white p-6 rounded-2xl shadow-sm">
-                <p className="text-sm text-indigo-100 font-medium">Total Cost</p>
+                <p className="text-sm text-indigo-100 font-medium">
+                  Total Cost {isMonthView && <span className="font-bold">· {monthLabel(breakdownMonth)}</span>}
+                </p>
                 <p className="text-3xl font-extrabold mt-1">
-                  Rs. {(cumulativeHistoricalCost + savedTotals.reduce((sum, t) => sum + t.totalCost, 0)).toFixed(2)}
+                  Rs. {(isMonthView
+                    ? monthStats.cost
+                    : cumulativeHistoricalCost + savedTotals.reduce((sum, t) => sum + t.totalCost, 0)
+                  ).toFixed(2)}
                 </p>
-                <p className="text-xs text-indigo-200 mt-1">Combined from uploaded CSVs + saved database records</p>
+                <p className="text-xs text-indigo-200 mt-1">
+                  {isMonthView ? `Records dated ${monthLabel(breakdownMonth)}` : 'Combined from uploaded CSVs + saved database records'}
+                </p>
               </div>
 
               <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-                <p className="text-sm text-slate-500 font-medium">Total Items Quantity</p>
-                <p className="text-3xl font-bold text-slate-900 mt-1">
-                  {cumulativeHistoricalQuantity + savedTotals.reduce((sum, t) => sum + t.totalQuantity, 0)}
+                <p className="text-sm text-slate-500 font-medium">
+                  Total Items Quantity {isMonthView && <span className="font-bold text-slate-700">· {monthLabel(breakdownMonth)}</span>}
                 </p>
-                <p className="text-xs text-slate-400 mt-1">Total plates or products fulfilled</p>
-              </div>
-
-              <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-                <p className="text-sm text-slate-500 font-medium">Processed Sources</p>
                 <p className="text-3xl font-bold text-slate-900 mt-1">
-                  {savedUploads.length + savedTotals.length}
+                  {isMonthView
+                    ? monthStats.qty
+                    : cumulativeHistoricalQuantity + savedTotals.reduce((sum, t) => sum + t.totalQuantity, 0)}
                 </p>
                 <p className="text-xs text-slate-400 mt-1">
-                  {savedUploads.length} uploaded files • {savedTotals.length} saved records
+                  {isMonthView ? `Plates or products in ${monthLabel(breakdownMonth)}` : 'Total plates or products fulfilled'}
+                </p>
+              </div>
+
+              <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                <p className="text-sm text-slate-500 font-medium">
+                  Processed Sources {isMonthView && <span className="font-bold text-slate-700">· {monthLabel(breakdownMonth)}</span>}
+                </p>
+                <p className="text-3xl font-bold text-slate-900 mt-1">
+                  {isMonthView ? monthStats.sources : savedUploads.length + savedTotals.length}
+                </p>
+                <p className="text-xs text-slate-400 mt-1">
+                  {isMonthView
+                    ? `Source${monthStats.sources !== 1 ? 's' : ''} contributing in ${monthLabel(breakdownMonth)}`
+                    : `${savedUploads.length} uploaded files • ${savedTotals.length} saved records`}
                 </p>
               </div>
             </div>
