@@ -2253,7 +2253,19 @@ export default function App() {
                       {pagedTotals.map((item) => (
                         <tr key={item.id} className="hover:bg-slate-50/50">
                           <td className="px-4 py-3 text-sm font-semibold text-slate-700">{item.date}</td>
-                          <td className="px-4 py-3 text-sm text-slate-500 font-mono">{item.batchName}</td>
+                          <td className="px-4 py-3 text-sm text-slate-500 font-mono">
+                            <span className="inline-flex items-center gap-2">
+                              {item.batchName}
+                              {item.items?.some((it) => it.subtotal === 0) && (
+                                <span
+                                  title="This saved total contains one or more items with a subtotal of Rs. 0 (missing price)."
+                                  className="inline-flex items-center justify-center h-5 w-5 flex-shrink-0 rounded-full bg-red-100 text-red-600 text-xs font-bold"
+                                >
+                                  !
+                                </span>
+                              )}
+                            </span>
+                          </td>
                           <td className="px-4 py-3 text-sm font-semibold text-slate-700">{item.totalQuantity}</td>
                           <td className="px-4 py-3 text-sm font-bold text-emerald-600">Rs. {item.totalCost.toFixed(2)}</td>
                           <td className="px-4 py-3 text-sm text-right">
