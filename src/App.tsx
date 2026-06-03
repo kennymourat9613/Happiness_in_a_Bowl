@@ -718,7 +718,10 @@ export default function App() {
   const [expandedItem, setExpandedItem] = useState<string | null>(null);
   const [occSortAsc, setOccSortAsc] = useState(false);
   const [expandedUpload, setExpandedUpload] = useState<string | null>(null);
-  const [breakdownMonth, setBreakdownMonth] = useState<string>('all');
+  const [breakdownMonth, setBreakdownMonth] = useState<string>(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  });
   const [uploadsCollapsed, setUploadsCollapsed] = useState(false);
   const [uploadsPage, setUploadsPage] = useState(1);
   const [uploadsSort, setUploadsSort] = useState<{ key: 'date' | 'items' | 'cost'; dir: SortDir }>({ key: 'date', dir: 'desc' });
@@ -1219,9 +1222,11 @@ export default function App() {
     return sortMonthKeys(Array.from(set));
   }, [cumulativeBreakdown]);
 
-  // Reset the month filter if the selected month is no longer present.
+  // Reset the month filter to "all" if the selected month has no data — but only
+  // once months are known, so the current-month default survives the async load
+  // (and falls back to "all" when the current month simply has no records).
   useEffect(() => {
-    if (breakdownMonth !== 'all' && !availableMonths.includes(breakdownMonth)) {
+    if (availableMonths.length > 0 && breakdownMonth !== 'all' && !availableMonths.includes(breakdownMonth)) {
       setBreakdownMonth('all');
     }
   }, [availableMonths, breakdownMonth]);
