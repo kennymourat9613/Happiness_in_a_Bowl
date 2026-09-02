@@ -696,6 +696,115 @@ function AliasModal({
   );
 }
 
+/* ─── Refrens catalog sync panel ─── */
+interface CatalogItem { name: string; unitPrice: number; inCatalog: boolean }
+
+function RefrensCatalogPanel({
+  items,
+  onToggle,
+  onMarkAllMissing,
+  onDownloadMissing,
+  onClearCatalog,
+}: {
+  items: CatalogItem[];
+  onToggle: (name: string) => void;
+  onMarkAllMissing: () => void;
+  onDownloadMissing: () => void;
+  onClearCatalog: () => void;
+}) {
+  const missing = items.filter((i) => !i.inCatalog);
+  const [expanded, setExpanded] = useState(true);
+
+  if (items.length === 0) return null;
+
+  const allPresent = missing.length === 0;
+
+  return (
+    <div className={cn(
+      'rounded-2xl border mb-4',
+      allPresent ? 'bg-emerald-50/60 border-emerald-200' : 'bg-amber-50 border-amber-300',
+    )}>
+      <div className="flex items-center justify-between gap-3 px-4 py-3 flex-wrap">
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="flex items-center gap-2 text-left"
+        >
+          <span className={cn('text-xs transition-transform', expanded ? 'rotate-90' : '', allPresent ? 'text-emerald-500' : 'text-amber-600')}>▶</span>
+          {allPresent ? (
+            <span className="text-sm font-semibold text-emerald-800">
+              ✓ All {items.length} item{items.length !== 1 ? 's' : ''} in this invoice are marked as in your Refrens catalog
+            </span>
+          ) : (
+            <span className="text-sm font-semibold text-amber-800">
+              ⚠ {missing.length} of {items.length} item{items.length !== 1 ? 's' : ''} not in your Refrens catalog — Refrens silently skips the whole invoice on import. Add these first.
+            </span>
+          )}
+        </button>
+        {!allPresent && (
+          <div className="flex items-center gap-2">
+            <button
+              onClick={onDownloadMissing}
+              className="px-3 py-1.5 bg-white border border-amber-300 text-amber-800 rounded-xl text-xs font-semibold hover:bg-amber-100 transition-colors"
+            >
+              Download missing (CSV)
+            </button>
+            <button
+              onClick={onMarkAllMissing}
+              className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-semibold transition-colors"
+            >
+              Mark all as added
+            </button>
+          </div>
+        )}
+      </div>
+
+      {expanded && (
+        <div className="px-4 pb-4">
+          <p className="text-xs text-slate-500 mb-2">
+            Tick an item once you've added it to Refrens (manually or via the bulk-add automation). Marks are saved and shared across devices.
+          </p>
+          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-slate-50 border-b border-slate-100 text-[10px] font-bold text-slate-500 uppercase">
+                  <th className="px-3 py-2 text-left">In&nbsp;Refrens</th>
+                  <th className="px-3 py-2 text-left">Item</th>
+                  <th className="px-3 py-2 text-right">Unit price</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {items.map((it) => (
+                  <tr key={it.name} className={cn('text-xs', !it.inCatalog && 'bg-amber-50/40')}>
+                    <td className="px-3 py-2">
+                      <input
+                        type="checkbox"
+                        checked={it.inCatalog}
+                        onChange={() => onToggle(it.name)}
+                        className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-400 cursor-pointer"
+                      />
+                    </td>
+                    <td className="px-3 py-2 text-slate-700 font-medium">
+                      {it.name}
+                      {!it.inCatalog && <span className="ml-2 text-[10px] font-semibold uppercase text-amber-600">needs adding</span>}
+                    </td>
+                    <td className="px-3 py-2 text-right text-slate-600">Rs. {it.unitPrice.toFixed(2)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="mt-2 text-right">
+            <button onClick={onClearCatalog} className="text-[11px] font-semibold text-slate-400 hover:text-red-600">
+              Reset my Refrens catalog list
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ─── Main App ─── */
 export default function App() {
   const [orders, setOrders] = useState<Order[]>([]);
@@ -728,6 +837,7 @@ export default function App() {
   const [totalsCollapsed, setTotalsCollapsed] = useState(false);
   const [totalsPage, setTotalsPage] = useState(1);
   const [totalsSort, setTotalsSort] = useState<{ key: 'date' | 'qty' | 'cost'; dir: SortDir }>({ key: 'date', dir: 'desc' });
+  const [refrensCatalog, setRefrensCatalog] = useState<string[]>([]);
 
   const todayIso = new Date().toISOString().slice(0, 10);
   const todayYmd = todayIso.replace(/-/g, '');
@@ -784,6 +894,13 @@ export default function App() {
         if (savedAliases) setAliasMap(savedAliases as AliasMap);
       } catch (e) {
         console.error('Failed to load menu name aliases', e);
+      }
+
+      try {
+        const savedCatalog = await getItem('catering_refrens_catalog');
+        if (savedCatalog) setRefrensCatalog(savedCatalog as string[]);
+      } catch (e) {
+        console.error('Failed to load Refrens catalog list', e);
       }
 
       // Recover active orders if they refreshed/scrolled on their tablet accidentally
@@ -1265,6 +1382,75 @@ export default function App() {
     }
     return { cost, qty, sources: sources.size };
   }, [filteredBreakdown]);
+
+  // Refrens catalog tracking: which items in the current (month-scoped) invoice
+  // are already marked as present in the Refrens Items catalog. Refrens' invoice
+  // import silently skips the whole invoice if any line item isn't catalogued,
+  // so this surfaces the exact items to add first.
+  const refrensCatalogSet = useMemo(
+    () => new Set(refrensCatalog.map((n) => n.trim().toLowerCase())),
+    [refrensCatalog],
+  );
+
+  const catalogItems = useMemo<CatalogItem[]>(
+    () => filteredBreakdown.map((item) => ({
+      name: item.displayName,
+      unitPrice: item.totalQty > 0 ? item.totalCost / item.totalQty : 0,
+      inCatalog: refrensCatalogSet.has(item.displayName.trim().toLowerCase()),
+    })),
+    [filteredBreakdown, refrensCatalogSet],
+  );
+
+  const missingFromCatalog = useMemo(
+    () => catalogItems.filter((i) => !i.inCatalog),
+    [catalogItems],
+  );
+
+  const toggleCatalogItem = useCallback((name: string) => {
+    const key = name.trim().toLowerCase();
+    setRefrensCatalog((prev) => {
+      const has = prev.some((n) => n.trim().toLowerCase() === key);
+      const next = has ? prev.filter((n) => n.trim().toLowerCase() !== key) : [...prev, name.trim()];
+      void setItem('catering_refrens_catalog', next);
+      return next;
+    });
+  }, []);
+
+  const markAllMissingInCatalog = useCallback(() => {
+    setRefrensCatalog((prev) => {
+      const existing = new Set(prev.map((n) => n.trim().toLowerCase()));
+      const additions = missingFromCatalog
+        .map((i) => i.name.trim())
+        .filter((n) => !existing.has(n.toLowerCase()));
+      if (additions.length === 0) return prev;
+      const next = [...prev, ...additions];
+      void setItem('catering_refrens_catalog', next);
+      return next;
+    });
+  }, [missingFromCatalog]);
+
+  const clearRefrensCatalog = useCallback(() => {
+    setRefrensCatalog([]);
+    void setItem('catering_refrens_catalog', []);
+  }, []);
+
+  const handleDownloadMissingItemsCSV = useCallback(() => {
+    if (missingFromCatalog.length === 0) return;
+    const q = (val: string) => `"${val.replace(/"/g, '""')}"`;
+    let csv = 'name,sku,sellingPrice,currency,unit\r\n';
+    for (const item of missingFromCatalog) {
+      csv += [q(item.name), q(makeSku(item.name)), q(item.unitPrice.toFixed(2)), q('MUR'), q('PCS')].join(',') + '\r\n';
+    }
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `refrens_missing_items${breakdownMonth === 'all' ? '' : `_${breakdownMonth}`}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }, [missingFromCatalog, breakdownMonth]);
 
   // Generic numeric/date comparator with unparseable dates pushed to the end.
   const compareWith = (a: number | null, b: number | null, dir: SortDir): number => {
@@ -1923,6 +2109,15 @@ export default function App() {
                     </span>
                   )}
                 </p>
+
+                <RefrensCatalogPanel
+                  items={catalogItems}
+                  onToggle={toggleCatalogItem}
+                  onMarkAllMissing={markAllMissingInCatalog}
+                  onDownloadMissing={handleDownloadMissingItemsCSV}
+                  onClearCatalog={clearRefrensCatalog}
+                />
+
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead>
@@ -2527,6 +2722,11 @@ export default function App() {
                 </div>
               </div>
             </div>
+            {missingFromCatalog.length > 0 && (
+              <div className="mx-6 mb-2 p-3 bg-amber-50 border border-amber-300 rounded-xl text-xs text-amber-800">
+                ⚠️ <strong>{missingFromCatalog.length} item{missingFromCatalog.length !== 1 ? 's' : ''}</strong> in this invoice {missingFromCatalog.length !== 1 ? 'are' : 'is'} not yet in your Refrens catalog. Refrens will silently skip the whole invoice on import — add {missingFromCatalog.length !== 1 ? 'them' : 'it'} first (see the catalog panel on the breakdown), then download.
+              </div>
+            )}
             <div className="p-6 border-t border-slate-100 flex justify-end gap-3">
               <button
                 onClick={() => setShowRefrensModal(false)}
