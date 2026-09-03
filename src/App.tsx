@@ -456,6 +456,153 @@ function makeSku(name: string): string {
   return `HIB${letters}${hash}`;
 }
 
+/* ─── Refrens item-adder bookmarklet (static; queue comes from localStorage/clipboard) ─── */
+const REFRENS_BOOKMARKLET_SOURCE = `(function(){
+  var setNative = function(el, val) {
+    var setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+    setter.call(el, val);
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+  };
+
+  var QKEY = 'hib_refrens_queue';
+  var NEW_URL = 'https://refrens.com/app/happiness-in-a-bowl-ltd/inventory/new';
+
+  function showOverlay(html) {
+    var old = document.getElementById('hib-refrens-overlay');
+    if (old) old.remove();
+    var el = document.createElement('div');
+    el.id = 'hib-refrens-overlay';
+    el.style.cssText = 'position:fixed;bottom:16px;right:16px;z-index:999999;background:#111827;color:#fff;padding:12px 16px;border-radius:12px;font:13px/1.4 sans-serif;box-shadow:0 4px 16px rgba(0,0,0,.35);max-width:280px;';
+    el.innerHTML = html + '<div style="margin-top:6px;text-align:right"><button id="hib-refrens-dismiss" style="background:transparent;border:none;color:#9ca3af;font-size:11px;cursor:pointer">dismiss</button></div>';
+    document.body.appendChild(el);
+    var dismiss = document.getElementById('hib-refrens-dismiss');
+    if (dismiss) dismiss.onclick = function () { el.remove(); };
+  }
+
+  function getQueue() {
+    try {
+      var raw = localStorage.getItem(QKEY);
+      if (!raw) return null;
+      var q = JSON.parse(raw);
+      if (q && Array.isArray(q.items)) return q;
+      return null;
+    } catch (e) { return null; }
+  }
+
+  function saveQueue(q) {
+    localStorage.setItem(QKEY, JSON.stringify(q));
+  }
+
+  function ensureQueue() {
+    var q = getQueue();
+    if (q && q.items.some(function (i) { return !i.done; })) return Promise.resolve(q);
+    return Promise.resolve()
+      .then(function () { return navigator.clipboard.readText(); })
+      .catch(function () { return null; })
+      .then(function (text) {
+        if (text && text.indexOf('HIBQ:') === 0) {
+          try {
+            var items = JSON.parse(text.slice(5));
+            var next = { items: items.map(function (i) { return { n: i.n, s: i.s, p: i.p, done: false }; }), startedAt: Date.now() };
+            saveQueue(next);
+            return next;
+          } catch (e) { return null; }
+        }
+        return null;
+      });
+  }
+
+  function fillAndSave(q, item) {
+    var nameInput = document.querySelector('input[placeholder="Enter name of your item"]');
+    if (!nameInput) { alert('HIB adder: could not find the item name field. Are you on the Add Item page?'); return; }
+    setNative(nameInput, item.n);
+
+    var textInputs = Array.prototype.slice.call(document.querySelectorAll('input[type="text"]'));
+    var skuInput = null;
+    for (var i = 0; i < textInputs.length; i++) { if (/^\\d{6,}$/.test(textInputs[i].value)) { skuInput = textInputs[i]; break; } }
+    if (skuInput) setNative(skuInput, item.s);
+
+    var allEls = document.querySelectorAll('*');
+    var checkboxLeaf = null;
+    for (var j = 0; j < allEls.length; j++) {
+      var el = allEls[j];
+      if (el.children.length === 0 && /can be sold to customers/i.test(el.textContent || '')) { checkboxLeaf = el; break; }
+    }
+    if (checkboxLeaf) {
+      var container = checkboxLeaf.closest('div');
+      var cb = container ? container.querySelector('input[type="checkbox"]') : null;
+      if (!cb && container && container.parentElement) cb = container.parentElement.querySelector('input[type="checkbox"]');
+      if (cb && !cb.checked) cb.click();
+    }
+
+    var pricingLeaf = null;
+    for (var k = 0; k < allEls.length; k++) {
+      var el2 = allEls[k];
+      if (el2.children.length === 0 && /2\\.\\s*Pricing\\s*&\\s*Taxation/i.test(el2.textContent || '')) { pricingLeaf = el2; break; }
+    }
+    if (pricingLeaf) pricingLeaf.click();
+
+    setTimeout(function () {
+      var numberInputs = document.querySelectorAll('input[type="number"]');
+      if (numberInputs.length > 1) setNative(numberInputs[1], String(item.p));
+
+      var buttons = document.querySelectorAll('button');
+      var saveBtn = null;
+      for (var b = 0; b < buttons.length; b++) { if (/save\\s*&\\s*add\\s*item/i.test(buttons[b].textContent || '')) { saveBtn = buttons[b]; break; } }
+      if (!saveBtn) { alert('HIB adder: could not find the "Save & Add Item" button.'); return; }
+      saveBtn.click();
+
+      // Mark done synchronously right after the click fires, since Save navigates away.
+      item.done = true;
+      saveQueue(q);
+
+      var remaining = q.items.filter(function (i) { return !i.done; }).length;
+      var total = q.items.length;
+      showOverlay('Added <b>' + item.n + '</b><br>' + (total - remaining) + ' / ' + total + ' done — click the bookmarklet again for the next item.');
+    }, 700);
+  }
+
+  function main() {
+    if (location.hostname.indexOf('refrens.com') === -1) {
+      alert('HIB adder: open this on refrens.com first.');
+      return;
+    }
+
+    ensureQueue().then(function (q) {
+      if (!q) {
+        alert('HIB adder: copy the items from the app first ("Copy items for Refrens adder"), then click this bookmarklet again.');
+        return;
+      }
+
+      var next = null;
+      for (var i = 0; i < q.items.length; i++) { if (!q.items[i].done) { next = q.items[i]; break; } }
+
+      if (!next) {
+        localStorage.removeItem(QKEY);
+        showOverlay('✅ All ' + q.items.length + ' item(s) added!');
+        return;
+      }
+
+      if (/\\/inventory$/.test(location.pathname)) {
+        location.href = NEW_URL;
+        return;
+      }
+
+      if (/\\/inventory\\/new/.test(location.pathname)) {
+        fillAndSave(q, next);
+      } else {
+        var remaining = q.items.filter(function (i) { return !i.done; }).length;
+        showOverlay('Go to the Refrens Items page, then click the bookmarklet.<br>Remaining: ' + remaining + ' item(s).');
+      }
+    });
+  }
+
+  main();
+})();`;
+
+const REFRENS_BOOKMARKLET_HREF = 'javascript:' + encodeURIComponent(REFRENS_BOOKMARKLET_SOURCE);
+
 /* ─── Pagination control ─── */
 const ROWS_PER_PAGE = 8;
 
@@ -705,19 +852,38 @@ function RefrensCatalogPanel({
   onMarkAllMissing,
   onDownloadMissing,
   onClearCatalog,
+  onCopyQueue,
+  copyQueueMsg,
 }: {
   items: CatalogItem[];
   onToggle: (name: string) => void;
   onMarkAllMissing: () => void;
   onDownloadMissing: () => void;
   onClearCatalog: () => void;
+  onCopyQueue: () => void;
+  copyQueueMsg: string | null;
 }) {
   const missing = items.filter((i) => !i.inCatalog);
   const [expanded, setExpanded] = useState(true);
+  const [bookmarkletHelpOpen, setBookmarkletHelpOpen] = useState(false);
+  const [bookmarkletCopyMsg, setBookmarkletCopyMsg] = useState<string | null>(null);
 
   if (items.length === 0) return null;
 
   const allPresent = missing.length === 0;
+
+  const handleCopyBookmarkletCode = () => {
+    navigator.clipboard.writeText(REFRENS_BOOKMARKLET_HREF).then(
+      () => {
+        setBookmarkletCopyMsg('Bookmarklet code copied.');
+        setTimeout(() => setBookmarkletCopyMsg(null), 4000);
+      },
+      () => {
+        setBookmarkletCopyMsg('Could not copy — check browser permissions.');
+        setTimeout(() => setBookmarkletCopyMsg(null), 4000);
+      },
+    );
+  };
 
   return (
     <div className={cn(
@@ -750,6 +916,12 @@ function RefrensCatalogPanel({
               Download missing (CSV)
             </button>
             <button
+              onClick={onCopyQueue}
+              className="px-3 py-1.5 bg-white border border-amber-300 text-amber-800 rounded-xl text-xs font-semibold hover:bg-amber-100 transition-colors"
+            >
+              Copy items for Refrens adder
+            </button>
+            <button
               onClick={onMarkAllMissing}
               className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-semibold transition-colors"
             >
@@ -759,10 +931,17 @@ function RefrensCatalogPanel({
         )}
       </div>
 
+      {!allPresent && copyQueueMsg && (
+        <div className="px-4 pb-2 -mt-1">
+          <p className="text-xs font-semibold text-emerald-700">{copyQueueMsg}</p>
+        </div>
+      )}
+
       {expanded && (
         <div className="px-4 pb-4">
           <p className="text-xs text-slate-500 mb-2">
             Tick an item once you've added it to Refrens (manually or via the bulk-add automation). Marks are saved and shared across devices.
+            {' '}Or use the one-click adder below: copy the missing items, then click your Refrens bookmarklet once per item.
           </p>
           <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
             <table className="w-full text-sm">
@@ -794,6 +973,83 @@ function RefrensCatalogPanel({
               </tbody>
             </table>
           </div>
+
+          <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50">
+            <button
+              type="button"
+              onClick={() => setBookmarkletHelpOpen((v) => !v)}
+              className="w-full flex items-center gap-2 px-3 py-2 text-left"
+            >
+              <span className={cn('text-xs transition-transform text-slate-500', bookmarkletHelpOpen ? 'rotate-90' : '')}>▶</span>
+              <span className="text-xs font-semibold text-slate-600">Set up the one-click Refrens adder</span>
+            </button>
+            {bookmarkletHelpOpen && (
+              <div className="px-3 pb-3 text-xs text-slate-600 space-y-4">
+                <div className="space-y-2">
+                  <p className="text-[11px] font-bold uppercase tracking-wide text-indigo-600">Fully automatic (recommended)</p>
+                  <p>
+                    1. Install{' '}
+                    <a
+                      href="https://www.tampermonkey.net"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-indigo-600 font-semibold underline"
+                    >
+                      Tampermonkey
+                    </a>{' '}
+                    (free browser extension) if you don't already have it.
+                  </p>
+                  <p>
+                    2. Install the HIB userscript — open{' '}
+                    <a
+                      href="https://raw.githubusercontent.com/kennymourat9613/Happiness_in_a_Bowl/main/refrens-adder.user.js"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-indigo-600 font-semibold underline"
+                    >
+                      this link
+                    </a>{' '}
+                    and Tampermonkey will offer to install it automatically (works once this file is pushed to GitHub). If that doesn't prompt, open Tampermonkey → Create a new script → paste in the file's contents from the repo (<code className="font-mono text-[10px]">refrens-adder.user.js</code>) → Save.
+                  </p>
+                  <p>
+                    3. Click "Copy items for Refrens adder" above, open your Refrens Items page, then in the small panel that appears in the corner click <strong>Load from clipboard</strong> and then <strong>Start</strong> — it fills, saves, and advances through every item hands-free. Leave the tab open until it shows "done".
+                  </p>
+                </div>
+
+                <div className="space-y-2 pt-3 border-t border-slate-200">
+                  <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Manual (no extension, one click per item)</p>
+                  <p>
+                    1. Drag this link to your browser's bookmarks bar (once):{' '}
+                    <a
+                      href={REFRENS_BOOKMARKLET_HREF}
+                      onClick={(e) => e.preventDefault()}
+                      className="inline-block px-2 py-1 bg-indigo-600 text-white rounded-lg font-semibold no-underline cursor-grab active:cursor-grabbing"
+                      title="Drag me to your bookmarks bar"
+                    >
+                      ➕ Add to Refrens
+                    </a>
+                  </p>
+                  <p>
+                    2. Click "Copy items for Refrens adder" above, then go to your Refrens Items page and click the bookmarklet — it fills and saves one item per click, and auto-advances to the next.
+                  </p>
+                  <p className="text-slate-400">
+                    Can't drag links here? Create a new bookmark manually (right-click your bookmarks bar → Add page), name it "Add to Refrens", then paste the code below as its URL.
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleCopyBookmarkletCode}
+                      className="px-2.5 py-1 bg-white border border-slate-300 rounded-lg text-[11px] font-semibold text-slate-600 hover:bg-slate-100"
+                    >
+                      Copy bookmarklet code
+                    </button>
+                    {bookmarkletCopyMsg && <span className="text-[11px] font-semibold text-emerald-700">{bookmarkletCopyMsg}</span>}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
           <div className="mt-2 text-right">
             <button onClick={onClearCatalog} className="text-[11px] font-semibold text-slate-400 hover:text-red-600">
               Reset my Refrens catalog list
@@ -1451,6 +1707,28 @@ export default function App() {
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
   }, [missingFromCatalog, breakdownMonth]);
+
+  const [refrensQueueCopyMsg, setRefrensQueueCopyMsg] = useState<string | null>(null);
+
+  const handleCopyRefrensQueue = useCallback(() => {
+    if (missingFromCatalog.length === 0) return;
+    const payload = missingFromCatalog.map((i) => ({
+      n: i.name,
+      s: makeSku(i.name),
+      p: Number(i.unitPrice.toFixed(2)),
+    }));
+    const blob = `HIBQ:${JSON.stringify(payload)}`;
+    navigator.clipboard.writeText(blob).then(
+      () => {
+        setRefrensQueueCopyMsg(`Copied ${payload.length} item${payload.length !== 1 ? 's' : ''} — now click your Refrens bookmarklet.`);
+        setTimeout(() => setRefrensQueueCopyMsg(null), 5000);
+      },
+      () => {
+        setRefrensQueueCopyMsg('Could not copy to clipboard — check browser permissions and try again.');
+        setTimeout(() => setRefrensQueueCopyMsg(null), 5000);
+      },
+    );
+  }, [missingFromCatalog]);
 
   // Generic numeric/date comparator with unparseable dates pushed to the end.
   const compareWith = (a: number | null, b: number | null, dir: SortDir): number => {
@@ -2116,6 +2394,8 @@ export default function App() {
                   onMarkAllMissing={markAllMissingInCatalog}
                   onDownloadMissing={handleDownloadMissingItemsCSV}
                   onClearCatalog={clearRefrensCatalog}
+                  onCopyQueue={handleCopyRefrensQueue}
+                  copyQueueMsg={refrensQueueCopyMsg}
                 />
 
                 <div className="overflow-x-auto">
